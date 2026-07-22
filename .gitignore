@@ -1,13 +1,22 @@
-# Don't expose bot token
-config_token.py
-
-# Python
 __pycache__/
 *.pyc
-
-# Data
+*.pyo
+.env
 admin_db.json
-
-# Temporary files
-write_token.py
-admin_fix_part.txt
+config_token.py
+*.log
+.agents/
+.claude/
+bot_data.json
+temp_payload.bin
+new_logo_temp.jpg
+bg_animated.jpg
+sci_fi_texture.jpg
+admin-panel/
+admin-server/
+cpanel-admin/
+cpanel_helper/
+phphost_files/
+frames/
+XrPanel/
+instagram-viewer/

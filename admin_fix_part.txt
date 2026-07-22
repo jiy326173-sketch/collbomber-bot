@@ -1,0 +1,24 @@
+        bot.edit_message_text("🔑 *Generate Key*\n\nChoose plan type:", chat_id, msg_id, parse_mode="Markdown", reply_markup=markup)
+        bot.answer_callback_query(call.id)
+        return
+
+    if action == "viewkeys":
+        keys = admin_db.get_all_keys()
+        if not keys:
+            bot.edit_message_text("❌ Koi key generate nahi hui abhi.", chat_id, msg_id)
+            bot.answer_callback_query(call.id)
+            return
+        msg = "🔐 *All Generated Keys*\n\n"
+        used_count = sum(1 for k in keys.values() if k["used"])
+        msg += f"Total: {len(keys)} | Used: {used_count} | Unused: {len(keys)-used_count}\n\n"
+        count = 0
+        for key, k in sorted(keys.items(), key=lambda x: x[1]["created_at"], reverse=True):
+            if count >= 8:
+                msg += f"\n...aur {len(keys)-8} keys"
+                break
+            status = "✅ Used" if k["used"] else "🆕 New"
+            msg += f"`{key}` | {k['plan'].upper()} | ₹{k['price']} | {status}\n"
+            count += 1
+        bot.edit_message_text(msg, chat_id, msg_id, parse_mode="Markdown")
+        bot.answer_callback_query(call.id)
+        return

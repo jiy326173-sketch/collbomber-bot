@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Tokyo 2.0 — Claymorphism</title>
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@700;800;900&family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        clay: {
+                            canvas: '#F4F1FA',
+                            foreground: '#332F3A',
+                            muted: '#635F69',
+                            accent: '#7C3AED',
+                            'accent-alt': '#DB2777',
+                            sky: '#0EA5E9',
+                            emerald: '#10B981',
+                            amber: '#F59E0B',
+                            cardBg: 'rgba(255,255,255,0.6)',
+                        }
+                    },
+                    fontFamily: {
+                        nunito: ['Nunito', 'sans-serif'],
+                        dmsans: ['DM Sans', 'sans-serif'],
+                    },
+                    borderRadius: {
+                        clay: '32px',
+                        'clay-sm': '20px',
+                        'clay-lg': '48px',
+                        'clay-xl': '60px',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'DM Sans', sans-serif;
+            background: #F4F1FA;
+            color: #332F3A;
+            overflow-x: hidden;
+        }
+
+        h1, h2, h3, h4, .font-nunito {
+            font-family: 'Nunito', sans-serif;
+        }
+
+        /* ===== SHADOW SYSTEM ===== */
+        .shadow-clayCard {
+            box-shadow:
+                16px 16px 32px rgba(160, 150, 180, 0.2),
+                -10px -10px 24px rgba(255, 255, 255, 0.9),
+                inset 6px 6px 12px rgba(139, 92, 246, 0.03),
+                inset -6px -6px 12px rgba(255, 255, 255, 1);
+        }
+        .shadow-clayCardHover {
+            box-shadow:
+                24px 24px 48px rgba(160, 150, 180, 0.25),
+                -12px -12px 32px rgba(255, 255, 255, 0.95),
+                inset 6px 6px 12px rgba(139, 92, 246, 0.03),
+                inset -6px -6px 12px rgba(255, 255, 255, 1);
+        }
+        .shadow-clayButton {
+            box-shadow:
+                12px 12px 24px rgba(139, 92, 246, 0.3),
+                -8px -8px 16px rgba(255, 255, 255, 0.4),
+                inset 4px 4px 8px rgba(255, 255, 255, 0.4),
+                inset -4px -4px 8px rgba(0, 0, 0, 0.1);
+        }
+        .shadow-clayButtonHover {
+            box-shadow:
+                16px 16px 32px rgba(139, 92, 246, 0.35),
+                -10px -10px 20px rgba(255, 255, 255, 0.5),
+                inset 4px 4px 8px rgba(255, 255, 255, 0.4),
+                inset -4px -4px 8px rgba(0, 0, 0, 0.1);
+        }
+        .shadow-clayPressed {
+            box-shadow:
+                inset 10px 10px 20px #d9d4e3,
+                inset -10px -10px 20px #ffffff;
+        }
+        .shadow-clayDeep {
+            box-shadow:
+                30px 30px 60px #cdc6d9,
+                -30px -30px 60px #ffffff,
+                inset 10px 10px 20px rgba(139, 92, 246, 0.05),
+                inset -10px -10px 20px rgba(255, 255, 255, 0.8);
+        }
+        .shadow-clayOrb {
+            box-shadow:
+                8px 8px 16px rgba(139, 92, 246, 0.25),
+                -6px -6px 12px rgba(255, 255, 255, 0.6),
+                inset 3px 3px 6px rgba(255, 255, 255, 0.5),
+                inset -3px -3px 6px rgba(0, 0, 0, 0.05);
+        }
+
+        /* ===== ANIMATIONS ===== */
+        @keyframes clay-float {
+            0%, 100% { transform: translateY(0) rotate(0deg); }
+            50% { transform: translateY(-20px) rotate(2deg); }
+        }
+        @keyframes clay-float-delayed {
+            0%, 100% { transform: translateY(0) rotate(0deg); }
+            50% { transform: translateY(-15px) rotate(-2deg); }
+        }
+        @keyframes clay-float-slow {
+            0%, 100% { transform: translateY(0) rotate(0deg); }
+            50% { transform: translateY(-30px) rotate(5deg); }
+        }
+        @keyframes clay-breathe {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.02); }
+        }
+        .animate-clay-float { animation: clay-float 8s ease-in-out infinite; }
+        .animate-clay-float-delayed { animation: clay-float-delayed 10s ease-in-out infinite; }
+        .animate-clay-float-slow { animation: clay-float-slow 12s ease-in-out infinite; }
+        .animate-clay-breathe { animation: clay-breathe 6s ease-in-out infinite; }
+        .animation-delay-2000 { animation-delay: 2s; }
+        .animation-delay-4000 { animation-delay: 4s; }
+
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+            }
+        }
+
+        .clay-text-gradient {
+            background: linear-gradient(135deg, #332F3A 20%, #7C3AED 60%, #DB2777);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .card {
+            background: rgba(255, 255, 255, 0.6);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border-radius: 32px;
+            padding: 2rem;
+            box-shadow:
+                16px 16px 32px rgba(160, 150, 180, 0.2),
+                -10px -10px 24px rgba(255, 255, 255, 0.9),
+                inset 6px 6px 12px rgba(139, 92, 246, 0.03),
+                inset -6px -6px 12px rgba(255, 255, 255, 1);
+            transition: all 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        .card:hover {
+            transform: translateY(-8px);
+            box-shadow:
+                24px 24px 48px rgba(160, 150, 180, 0.25),
+                -12px -12px 32px rgba(255, 255, 255, 0.95),
+                inset 6px 6px 12px rgba(139, 92, 246, 0.03),
+                inset -6px -6px 12px rgba(255, 255, 255, 1);
+        }
+
+        .btn-clay {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            letter-spacing: 0.025em;
+            border-radius: 20px;
+            height: 3.5rem;
+            padding: 0 2rem;
+            transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+            cursor: pointer;
+            border: none;
+            font-size: 1rem;
+        }
+        .btn-clay-primary {
+            background: linear-gradient(135deg, #A78BFA, #7C3AED);
+            color: white;
+            box-shadow:
+                12px 12px 24px rgba(139, 92, 246, 0.3),
+                -8px -8px 16px rgba(255, 255, 255, 0.4),
+                inset 4px 4px 8px rgba(255, 255, 255, 0.4),
+                inset -4px -4px 8px rgba(0, 0, 0, 0.1);
+        }
+        .btn-clay-primary:hover {
+            transform: translateY(-4px);
+            box-shadow:
+                16px 16px 32px rgba(139, 92, 246, 0.35),
+                -10px -10px 20px rgba(255, 255, 255, 0.5),
+                inset 4px 4px 8px rgba(255, 255, 255, 0.4),
+                inset -4px -4px 8px rgba(0, 0, 0, 0.1);
+        }
+        .btn-clay-primary:active {
+            transform: scale(0.92);
+            box-shadow:
+                inset 10px 10px 20px #d9d4e3,
+                inset -10px -10px 20px #ffffff;
+        }
+        .btn-clay-secondary {
+            background: white;
+            color: #332F3A;
+            box-shadow:
+                12px 12px 24px rgba(139, 92, 246, 0.3),
+                -8px -8px 16px rgba(255, 255, 255, 0.4),
+                inset 4px 4px 8px rgba(255, 255, 255, 0.4),
+                inset -4px -4px 8px rgba(0, 0, 0, 0.1);
+        }
+        .btn-clay-secondary:hover {
+            transform: translateY(-4px);
+        }
+        .btn-clay-secondary:active {
+            transform: scale(0.92);
+            box-shadow:
+                inset 10px 10px 20px #d9d4e3,
+                inset -10px -10px 20px #ffffff;
+        }
+
+        input.clay-input {
+            width: 100%;
+            height: 4rem;
+            border: none;
+            background: #EFEBF5;
+            padding: 0 1.5rem;
+            font-size: 1.125rem;
+            color: #332F3A;
+            border-radius: 20px;
+            outline: none;
+            box-shadow:
+                inset 10px 10px 20px #d9d4e3,
+                inset -10px -10px 20px #ffffff;
+            transition: all 0.2s ease;
+        }
+        input.clay-input:focus {
+            background: white;
+            box-shadow:
+                0 0 0 4px rgba(124, 58, 237, 0.15),
+                inset 10px 10px 20px #d9d4e3,
+                inset -10px -10px 20px #ffffff;
+        }
+        input.clay-input::placeholder { color: #635F69; }
+
+        .orb {
+            width: 4rem;
+            height: 4rem;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            box-shadow:
+                8px 8px 16px rgba(139, 92, 246, 0.25),
+                -6px -6px 12px rgba(255, 255, 255, 0.6),
+                inset 3px 3px 6px rgba(255, 255, 255, 0.5),
+                inset -3px -3px 6px rgba(0, 0, 0, 0.05);
+            transition: all 0.3s ease;
+        }
+        .orb:hover { transform: scale(1.1); }
+    </style>
+</head>
+<body>
+
+    <!-- ===== AMBIENT BLOBS ===== -->
+    <div class="pointer-events-none fixed inset-0 overflow-hidden -z-10">
+        <div class="absolute -top-[10%] -left-[10%] h-[60vh] w-[60vh] rounded-full bg-[#8B5CF6]/10 blur-3xl animate-clay-float"></div>
+        <div class="absolute -right-[10%] top-[20%] h-[55vh] w-[55vh] rounded-full bg-[#EC4899]/10 blur-3xl animate-clay-float-delayed"></div>
+        <div class="absolute -bottom-[15%] left-[30%] h-[50vh] w-[50vh] rounded-full bg-[#0EA5E9]/10 blur-3xl animate-clay-float-slow animation-delay-2000"></div>
+        <div class="absolute top-[40%] left-[60%] h-[40vh] w-[40vh] rounded-full bg-[#10B981]/10 blur-3xl animate-clay-float animation-delay-4000"></div>
+    </div>
+
+    <!-- ===== NAV ===== -->
+    <nav class="mx-auto mt-6 max-w-6xl px-4">
+        <div class="mx-auto flex h-16 items-center justify-between rounded-[32px] bg-white/60 px-6 shadow-clayCard backdrop-blur-xl sm:h-20 sm:rounded-[40px] sm:px-8">
+            <div class="flex items-center gap-3">
+                <div class="orb bg-gradient-to-br from-purple-400 to-purple-600 text-white text-lg font-black font-nunito">T</div>
+                <span class="text-xl font-black font-nunito text-[#332F3A]">Tokyo <span class="text-[#7C3AED]">2.0</span></span>
+            </div>
+            <div class="hidden items-center gap-8 sm:flex">
+                <a href="#" class="font-medium text-[#635F69] hover:text-[#7C3AED] transition-colors">Home</a>
+                <a href="#" class="font-medium text-[#635F69] hover:text-[#7C3AED] transition-colors">Features</a>
+                <a href="#" class="font-medium text-[#635F69] hover:text-[#7C3AED] transition-colors">Pricing</a>
+                <button class="btn-clay btn-clay-primary h-11 px-6 text-sm">Get Started</button>
+            </div>
+            <button class="sm:hidden btn-clay btn-clay-primary h-11 px-4 text-sm">Menu</button>
+        </div>
+    </nav>
+
+    <!-- ===== HERO ===== -->
+    <section class="mx-auto mt-12 max-w-6xl px-4 sm:mt-20">
+        <div class="flex flex-col items-center gap-8 text-center sm:gap-10">
+            <div class="inline-flex items-center gap-3 rounded-full bg-white/60 px-6 py-3 shadow-clayPressed backdrop-blur-xl">
+                <span class="h-2 w-2 rounded-full bg-[#10B981] animate-clay-breathe"></span>
+                <span class="text-sm font-bold font-nunito text-[#635F69] tracking-wide">Now in Public Beta</span>
+            </div>
+
+            <h1 class="max-w-4xl text-5xl font-black font-nunito leading-[1.1] tracking-tight sm:text-7xl md:text-7xl lg:text-8xl">
+                <span class="clay-text-gradient">Build Premium Clay Experiences</span>
+            </h1>
+
+            <p class="max-w-2xl text-lg font-medium text-[#635F69] leading-relaxed sm:text-xl">
+                High-fidelity claymorphism for modern interfaces. Soft, tactile, 
+                and irresistibly touchable — crafted with precision shadow stacks 
+                and candy-store colors.
+            </p>
+
+            <div class="flex flex-col items-center gap-6 sm:flex-row">
+                <button class="btn-clay btn-clay-primary w-full sm:w-auto">Start Building Free</button>
+                <button class="btn-clay btn-clay-secondary w-full sm:w-auto">View Components</button>
+            </div>
+
+            <!-- Stats -->
+            <div class="mt-8 grid grid-cols-2 gap-6 md:grid-cols-4 md:gap-8">
+                <div class="text-center">
+                    <p class="text-4xl font-black font-nunito clay-text-gradient sm:text-5xl">128+</p>
+                    <p class="mt-1 text-sm font-bold text-[#635F69] tracking-wide">Components</p>
+                </div>
+                <div class="text-center">
+                    <p class="text-4xl font-black font-nunito clay-text-gradient sm:text-5xl">24k</p>
+                    <p class="mt-1 text-sm font-bold text-[#635F69] tracking-wide">Users</p>
+                </div>
+                <div class="text-center">
+                    <p class="text-4xl font-black font-nunito clay-text-gradient sm:text-5xl">99%</p>
+                    <p class="mt-1 text-sm font-bold text-[#635F69] tracking-wide">Satisfaction</p>
+                </div>
+                <div class="text-center">
+                    <p class="text-4xl font-black font-nunito clay-text-gradient sm:text-5xl">4.9★</p>
+                    <p class="mt-1 text-sm font-bold text-[#635F69] tracking-wide">Rating</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===== FEATURES ===== -->
+    <section class="mx-auto mt-32 max-w-6xl px-4">
+        <div class="text-center">
+            <p class="text-sm font-bold font-nunito text-[#7C3AED] tracking-widest">FEATURES</p>
+            <h2 class="mt-4 text-3xl font-black font-nunito sm:text-5xl">Everything feels<span class="text-[#7C3AED]"> touchable</span></h2>
+            <p class="mx-auto mt-4 max-w-2xl text-lg text-[#635F69] leading-relaxed">
+                Every element is designed to beg for interaction. Hover, click, 
+                tap — each action rewards you with buttery-smooth feedback.
+            </p>
+        </div>
+
+        <div class="mt-16 grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+            <!-- Card 1 (Hero) -->
+            <div class="card md:col-span-2 md:row-span-2 p-8 sm:p-10">
+                <div class="relative z-10 flex h-full flex-col">
+                    <div class="orb bg-gradient-to-br from-blue-400 to-blue-600 text-white text-2xl mb-6">🎨</div>
+                    <h3 class="text-3xl font-black font-nunito mb-4">Shadow Stack Engine</h3>
+                    <p class="text-lg text-[#635F69] leading-relaxed max-w-lg">
+                        Four-layer shadow architecture creates the most realistic 
+                        clay lighting simulation ever seen on the web. 
+                        Outer ambient occlusion meets inner rim light.
+                    </p>
+                    <div class="mt-auto grid grid-cols-2 gap-4 pt-8">
+                        <div class="rounded-[20px] bg-[#F4F1FA] p-4 shadow-clayPressed">
+                            <p class="text-sm font-bold font-nunito text-[#332F3A]">8 Shadow Layers</p>
+                            <p class="text-xs text-[#635F69]">Per component</p>
+                        </div>
+                        <div class="rounded-[20px] bg-[#F4F1FA] p-4 shadow-clayPressed">
+                            <p class="text-sm font-bold font-nunito text-[#332F3A]">60px Radius</p>
+                            <p class="text-xs text-[#635F69]">Maximum smoothness</p>
+                        </div>
+                    </div>
+                </div>
+                <!-- Decorative -->
+                <div class="absolute -bottom-8 -left-8 -right-8 h-32 rounded-[32px] bg-gradient-to-r from-[#7C3AED]/10 to-[#DB2777]/10 backdrop-blur-xl"></div>
+            </div>
+
+            <!-- Card 2 -->
+            <div class="card p-6 sm:p-8">
+                <div class="orb bg-gradient-to-br from-pink-400 to-pink-600 text-white mb-4">🖱️</div>
+                <h3 class="text-xl font-extrabold font-nunito mb-3">Tactile Feedback</h3>
+                <p class="text-base text-[#635F69] leading-relaxed">
+                    Buttons squish 8% on click. Cards lift 8px on hover. 
+                    Every interaction is a physical event.
+                </p>
+            </div>
+
+            <!-- Card 3 -->
+            <div class="card p-6 sm:p-8">
+                <div class="orb bg-gradient-to-br from-emerald-400 to-emerald-600 text-white mb-4">🎯</div>
+                <h3 class="text-xl font-extrabold font-nunito mb-3">Candy Store Colors</h3>
+                <p class="text-base text-[#635F69] leading-relaxed">
+                    Vivid violet, hot pink, sky blue, emerald green — wrapped in soft clay lighting.
+                </p>
+            </div>
+
+            <!-- Card 4 -->
+            <div class="card p-6 sm:p-8">
+                <div class="orb bg-gradient-to-br from-cyan-400 to-cyan-600 text-white mb-4">🌀</div>
+                <h3 class="text-xl font-extrabold font-nunito mb-3">Floating Animations</h3>
+                <p class="text-base text-[#635F69] leading-relaxed">
+                    Background blobs drift in zero gravity. Orbs breathe. 
+                    Nothing feels static.
+                </p>
+            </div>
+
+            <!-- Card 5 -->
+            <div class="card md:col-span-2 p-6 sm:p-8">
+                <div class="flex flex-col gap-8 sm:flex-row sm:items-center">
+                    <div class="orb bg-gradient-to-br from-amber-400 to-amber-600 text-white shrink-0">⚡</div>
+                    <div>
+                        <h3 class="text-2xl font-extrabold font-nunito mb-2">Ready for Production</h3>
+                        <p class="text-lg text-[#635F69] leading-relaxed">
+                            Tailwind CSS, React-ready components, accessible markup, 
+                            and responsive down to 320px.
+                        </p>
+                    </div>
+                    <button class="btn-clay btn-clay-primary shrink-0 w-full sm:w-auto">Browse Library</button>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===== TESTIMONIALS ===== -->
+    <section class="mx-auto mt-32 max-w-6xl px-4">
+        <h2 class="text-3xl font-black font-nunito text-center sm:text-5xl">Loved by <span class="text-[#7C3AED]">makers</span></h2>
+
+        <div class="mt-12 grid gap-6 md:grid-cols-3">
+            <div class="card p-6 sm:p-8 hover:-translate-y-3 transition-all duration-500">
+                <div class="flex items-center gap-2 mb-4">
+                    <span class="text-amber-400">★</span><span class="text-amber-400">★</span><span class="text-amber-400">★</span><span class="text-amber-400">★</span><span class="text-amber-400">★</span>
+                </div>
+                <p class="text-base text-[#635F69] leading-relaxed mb-6">
+                    "The shadow stacks are witchcraft. I've never seen 
+                    UI elements feel this physical in a browser."
+                </p>
+                <div class="flex items-center gap-3">
+                    <div class="h-10 w-10 rounded-full bg-gradient-to-br from-purple-400 to-purple-600 shadow-clayOrb"></div>
+                    <div>
+                        <p class="text-sm font-bold font-nunito">Priya Sharma</p>
+                        <p class="text-xs text-[#635F69]">Product Designer</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card p-6 sm:p-8 hover:-translate-y-3 transition-all duration-500">
+                <div class="flex items-center gap-2 mb-4">
+                    <span class="text-amber-400">★</span><span class="text-amber-400">★</span><span class="text-amber-400">★</span><span class="text-amber-400">★</span><span class="text-amber-400">★</span>
+                </div>
+                <p class="text-base text-[#635F69] leading-relaxed mb-6">
+                    "Finally a design system that understands the assignment. 
+                    Zero sharp corners, maximum delight."
+                </p>
+                <div class="flex items-center gap-3">
+                    <div class="h-10 w-10 rounded-full bg-gradient-to-br from-pink-400 to-pink-600 shadow-clayOrb"></div>
+                    <div>
+                        <p class="text-sm font-bold font-nunito">Rahul Verma</p>
+                        <p class="text-xs text-[#635F69]">Frontend Lead</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card p-6 sm:p-8 hover:-translate-y-3 transition-all duration-500">
+                <div class="flex items-center gap-2 mb-4">
+                    <span class="text-amber-400">★</span><span class="text-amber-400">★</span><span class="text-amber-400">★</span><span class="text-amber-400">★</span><span class="text-amber-400">★</span>
+                </div>
+                <p class="text-base text-[#635F69] leading-relaxed mb-6">
+                    "Our conversion rate jumped 40% after switching to this 
+                    system. Users literally want to touch everything."
+                </p>
+                <div class="flex items-center gap-3">
+                    <div class="h-10 w-10 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 shadow-clayOrb"></div>
+                    <div>
+                        <p class="text-sm font-bold font-nunito">Ananya Gupta</p>
+                        <p class="text-xs text-[#635F69]">Growth Engineer</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===== CTA ===== -->
+    <section class="mx-auto mt-32 mb-24 max-w-6xl px-4">
+        <div class="card relative overflow-hidden rounded-[48px] p-10 sm:rounded-[60px] sm:p-16 shadow-clayDeep text-center">
+            <h2 class="text-3xl font-black font-nunito sm:text-5xl max-w-2xl mx-auto leading-[1.15]">
+                Ready to build with <span class="text-[#7C3AED]">clay</span>?
+            </h2>
+            <p class="mx-auto mt-4 max-w-xl text-lg text-[#635F69] leading-relaxed">
+                Join thousands of designers crafting the most tactile 
+                interfaces on the web. Free forever.
+            </p>
+            <div class="mx-auto mt-10 flex max-w-lg flex-col gap-4 sm:flex-row">
+                <input type="email" placeholder="Enter your email" class="clay-input flex-1" />
+                <button class="btn-clay btn-clay-primary h-16 px-10 w-full sm:w-auto">Get Started</button>
+            </div>
+            <!-- Floating decorations -->
+            <div class="absolute -top-10 -right-10 h-32 w-32 rounded-full bg-[#8B5CF6]/10 blur-2xl animate-clay-float-slow"></div>
+            <div class="absolute -bottom-8 -left-8 h-24 w-24 rounded-full bg-[#EC4899]/10 blur-2xl animate-clay-float animation-delay-2000"></div>
+        </div>
+    </section>
+
+    <!-- ===== FOOTER ===== -->
+    <footer class="border-t border-[#E5E0EE] py-8 text-center">
+        <p class="text-sm font-medium text-[#635F69]">
+            Made with 🫶 using the <span class="font-bold font-nunito text-[#332F3A]">High-Fidelity Claymorphism</span> system
+        </p>
+    </footer>
+
+</body>
+</html>
