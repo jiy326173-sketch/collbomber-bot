@@ -1,0 +1,13 @@
+# Don't expose bot token
+config_token.py
+
+# Python
+__pycache__/
+*.pyc
+
+# Data
+admin_db.json
+
+# Temporary files
+write_token.py
+admin_fix_part.txt
