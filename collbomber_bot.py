@@ -1998,6 +1998,10 @@ if __name__ == "__main__":
     print(f"⚡ SMS Delay: {SMS_DELAY_BETWEEN_ROUNDS}s — NON STOP!")
     print(f"✅ Bot is running! Press Ctrl+C to stop.")
     print(f"👑 Admin ID: {ADMIN_IDS[0]} — Admin panel active!")
+    if not API_TOKEN or len(API_TOKEN) < 10:
+        print("❌ ERROR: No valid BOT_TOKEN found!")
+        print("   Set BOT_TOKEN environment variable or create config_token.py")
+        exit(1)
     try:
         bot.infinity_polling()
     except KeyboardInterrupt:
