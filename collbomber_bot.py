@@ -23,7 +23,7 @@ from collections import defaultdict
 # ============================================================
 import os
 # Try env first, then config file, then write token from env to file
-API_TOKEN = os.environ.get("BOT_TOKEN", "")
+API_TOKEN = os.environ.get("8961528591:AAHme1dCKPUAvmXcsO6MlgfkAoiqUdDY_U4", "")
 if not API_TOKEN:
     try:
         from config_token import TOKEN as API_TOKEN
