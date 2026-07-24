@@ -22,13 +22,23 @@ from collections import defaultdict
 # CONFIG — Bot Token + Speed Settings
 # ============================================================
 import os
+# Try env first, then config file, then write token from env to file
 API_TOKEN = os.environ.get("BOT_TOKEN", "")
 if not API_TOKEN:
     try:
         from config_token import TOKEN as API_TOKEN
     except ImportError:
         API_TOKEN = ""
-        print("⚠️ No token found! Set BOT_TOKEN env variable or create config_token.py")
+        print("⚠️ No token found! Check BOT_TOKEN env variable.")
+    
+# If BOT_TOKEN is set in env but config_token.py doesn't exist, create it
+if API_TOKEN and not os.path.exists("config_token.py"):
+    try:
+        with open("config_token.py", "w") as f:
+            f.write(f'TOKEN="""...{API_TOKEN}"\n')
+        print("✅ Created config_token.py from BOT_TOKEN env")
+    except:
+        pass
 
 MAX_WORKERS = 25  # Optimal — 25 concurrent threads
 SMS_MAX_WORKERS = 40  # SMS mode gets 40 workers
