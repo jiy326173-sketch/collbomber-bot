@@ -1,1 +1,1 @@
-web: python3 collbomber_bot.py
+web: gunicorn api_server:app
