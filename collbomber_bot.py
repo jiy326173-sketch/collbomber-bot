@@ -23,7 +23,7 @@ from collections import defaultdict
 # ============================================================
 import os
 # Try env first, then config file, then write token from env to file
-API_TOKEN = os.environ.get("8961528591:AAHme1dCKPUAvmXcsO6MlgfkAoiqUdDY_U4", "")
+API_TOKEN = os.environ.get("BOT_TOKEN", "")
 if not API_TOKEN:
     try:
         from config_token import TOKEN as API_TOKEN
@@ -2418,11 +2418,15 @@ if __name__ == "__main__":
         print("   Set BOT_TOKEN environment variable or create config_token.py")
         exit(1)
     try:
-        bot.infinity_polling()
+        while True:
+            try:
+                bot.infinity_polling(timeout=60, long_polling_timeout=60)
+                break
+            except Exception as e:
+                print(f"⚠️ Polling error: {e}")
+                print("🔄 Restarting polling in 5 seconds...")
+                time.sleep(5)
     except KeyboardInterrupt:
         print("\n🛑 Stopping all sessions...")
         stopped = bomber.stop_all()
         print(f"✅ Stopped {stopped} sessions. Bye!")
-    except Exception as e:
-        print(f"⚠️ Bot error: {e}")
-        # Don't exit on polling errors, let supervisord restart
