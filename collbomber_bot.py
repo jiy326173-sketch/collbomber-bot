@@ -41,10 +41,10 @@ if API_TOKEN and not os.path.exists("config_token.py"):
         pass
 
 MAX_WORKERS = 25  # Optimal — 25 concurrent threads
-SMS_MAX_WORKERS = 40  # SMS mode gets 40 workers
+SMS_MAX_WORKERS = 80  # SMS mode gets 80 workers for more power
 DELAY_BETWEEN_ROUNDS = 0.5  # 500ms between rounds
-SMS_DELAY_BETWEEN_ROUNDS = 0.2  # 200ms between SMS rounds
-SMS_DOUBLE_FIRE = False  # Single fire per round to reduce load
+SMS_DELAY_BETWEEN_ROUNDS = 0.15  # 150ms between SMS rounds — faster!
+SMS_DOUBLE_FIRE = True  # Double fire — har API ek round mein 2 baar fire!
 SMS_AUTO_RETRY = True  # Retry failed SMS APIs immediately
 
 IMPORTANT_CALL_INTERVAL = 5  # Important call APIs fire every 5 seconds
@@ -168,6 +168,55 @@ class AdminDB:
                 self._save()
                 return True
             return False
+
+    def remove_admin(self, user_id, removed_by):
+        with self.lock:
+            uid = str(user_id)
+            if uid in self.data["admins"]:
+                self.data["admins"].remove(uid)
+                self._save()
+                return True
+            return False
+
+    def get_admins(self):
+        with self.lock:
+            return list(self.data.get("admins", []))
+
+    def get_subscribed_count(self):
+        with self.lock:
+            subs = self.data.get("subscriptions", {})
+            count = 0
+            for uid, sub in subs.items():
+                if sub.get("expires_at"):
+                    try:
+                        expires = datetime.fromisoformat(sub["expires_at"])
+                        if datetime.now() > expires:
+                            continue
+                    except:
+                        pass
+                count += 1
+            return count
+
+    def get_subscription_stats(self):
+        with self.lock:
+            subs = self.data.get("subscriptions", {})
+            plans = {"trial": 0, "standard": 0, "premium": 0, "vip": 0}
+            active = 0
+            expired = 0
+            for uid, sub in subs.items():
+                plan = sub.get("plan", "unknown")
+                if sub.get("expires_at"):
+                    try:
+                        expires = datetime.fromisoformat(sub["expires_at"])
+                        if datetime.now() > expires:
+                            expired += 1
+                            continue
+                    except:
+                        pass
+                active += 1
+                if plan in plans:
+                    plans[plan] += 1
+            return {"active": active, "expired": expired, "plans": plans}
 
     def get_all_users(self):
         with self.lock:
@@ -324,6 +373,64 @@ class AdminDB:
     def get_all_keys(self):
         with self.lock:
             return dict(self.data.get("keys", {}))
+
+    def cancel_subscription(self, user_id, admin_id):
+        with self.lock:
+            uid = str(user_id)
+            subs = self.data.get("subscriptions", {})
+            if uid not in subs:
+                return False, "❌ Yeh user kisi bhi plan ke under nahi hai!"
+            sub = subs[uid]
+            plan = sub.get("plan", "unknown")
+            self.data.setdefault("cancelled_subs", {})
+            self.data["cancelled_subs"][uid] = {
+                "original_plan": plan,
+                "cancelled_at": datetime.now().isoformat(),
+                "cancelled_by": str(admin_id),
+                "old_sub": sub
+            }
+            del subs[uid]
+            self._save()
+            return True, f"✅ User `{uid}` ka {plan.upper()} plan cancel kar diya gaya!"
+
+    def get_subscribed_users(self):
+        with self.lock:
+            users = self.data.get("users", {})
+            subs = self.data.get("subscriptions", {})
+            result = {}
+            for uid, sub in subs.items():
+                if sub.get("expires_at"):
+                    try:
+                        expires = datetime.fromisoformat(sub["expires_at"])
+                        if datetime.now() > expires:
+                            continue
+                    except:
+                        pass
+                user_info = users.get(uid, {})
+                result[uid] = {
+                    "user": user_info,
+                    "sub": sub
+                }
+            return result
+
+    def get_non_subscribed_users(self):
+        with self.lock:
+            users = self.data.get("users", {})
+            subs = self.data.get("subscriptions", {})
+            result = {}
+            for uid, u in users.items():
+                if uid not in subs:
+                    result[uid] = u
+                else:
+                    sub = subs[uid]
+                    if sub.get("expires_at"):
+                        try:
+                            expires = datetime.fromisoformat(sub["expires_at"])
+                            if datetime.now() > expires:
+                                result[uid] = u
+                        except:
+                            pass
+            return result
 
 admin_db = AdminDB()
 
@@ -856,8 +963,8 @@ class UltraBomber:
         self.sms_executor = ThreadPoolExecutor(max_workers=SMS_MAX_WORKERS)  # 40 workers for SMS
         self.http_session = requests.Session()  # Reusable session for connection pooling
         # Set default timeouts on the session
-        self.http_session.mount('https://', requests.adapters.HTTPAdapter(pool_connections=10, pool_maxsize=25, max_retries=0))
-        self.http_session.mount('http://', requests.adapters.HTTPAdapter(pool_connections=10, pool_maxsize=25, max_retries=0))
+        self.http_session.mount('https://', requests.adapters.HTTPAdapter(pool_connections=20, pool_maxsize=50, max_retries=0))
+        self.http_session.mount('http://', requests.adapters.HTTPAdapter(pool_connections=20, pool_maxsize=50, max_retries=0))
 
     def _fire_api(self, api, phone):
         """Fire a single API and return result"""
@@ -961,8 +1068,6 @@ class UltraBomber:
                         bar_len = 30
                         filled = int(bar_len * pct / 100)
                         bar = "█" * filled + "░" * (bar_len - filled)
-                        stop_markup = types.InlineKeyboardMarkup()
-                        stop_markup.add(types.InlineKeyboardButton("🛑 STOP BOMBING", callback_data="stop_bombing"))
                         bot.send_message(chat_id,
                             f"💣 *BOMBING ACTIVE* 💣\n"
                             f"━━━━━━━━━━━━━━━━━━━━━\n"
@@ -970,7 +1075,7 @@ class UltraBomber:
                             f"✅ Hits: {ok}/{total}\n"
                             f"📊 Progress: [{bar}] {pct:.1f}%\n"
                             f"⏱️ Time Elapsed: {s.get('elapsed', '0s')}",
-                            parse_mode="Markdown", reply_markup=stop_markup)
+                            parse_mode="Markdown")
                     except:
                         pass
             except Exception as e:
@@ -1212,7 +1317,6 @@ def main_keyboard(user_id=None):
         types.KeyboardButton("🔥 MIX"),
         types.KeyboardButton("💥 Bulk MIX"),
         types.KeyboardButton("📞 CALL"),
-        types.KeyboardButton("📞 Fake Calling"),
         types.KeyboardButton("🛡 Protect"),
         types.KeyboardButton("🔓 Unprotect"),
         types.KeyboardButton("📊 Status"),
@@ -1220,7 +1324,6 @@ def main_keyboard(user_id=None):
         types.KeyboardButton("❓ Help"),
         types.KeyboardButton("📋 Plans"),
         types.KeyboardButton("🎁 Redeem"),
-        types.KeyboardButton("🎁 Free Trial"),
         types.KeyboardButton("🛑 Stop"),
     ]
     # Admin panel button — only visible to admin users
@@ -1332,7 +1435,7 @@ def btn_stop(message):
     success, msg = bomber.stop(message.chat.id)
     bot.reply_to(message, msg, parse_mode="Markdown", reply_markup=main_keyboard(message.chat.id))
 
-@bot.message_handler(func=lambda m: m.text in ["🔥 MIX", "💥 Bulk MIX", "📞 CALL", "📞 Fake Calling"])
+@bot.message_handler(func=lambda m: m.text in ["🔥 MIX", "💥 Bulk MIX", "📞 CALL"])
 @join_channel_required
 @subscription_required
 def btn_mode(message):
@@ -1508,7 +1611,7 @@ class UserData:
 user_data = UserData()
 
 # Exclude from fallback: admin button, cancel, and admin input mode
-EXCLUDED_FROM_FALLBACK = ["⚙️ Admin", "/cancel", "🛡 Protect", "🔓 Unprotect", "👤 Account", "📋 Plans", "🎁 Redeem", "🎁 Free Trial", "🛑 Stop"]
+EXCLUDED_FROM_FALLBACK = ["⚙️ Admin", "/cancel", "🛡 Protect", "🔓 Unprotect", "👤 Account", "📋 Plans", "🎁 Redeem", "🛑 Stop"]
 
 @bot.message_handler(func=lambda m: (m.text or "") not in EXCLUDED_FROM_FALLBACK and m.chat.id not in admin_data)
 @join_channel_required
@@ -1602,24 +1705,37 @@ def btn_admin_panel(message):
         return
     markup = types.InlineKeyboardMarkup(row_width=2)
     markup.add(
-        types.InlineKeyboardButton("👥 Users", callback_data="admin_users"),
+        types.InlineKeyboardButton("👥 All Users", callback_data="admin_users"),
         types.InlineKeyboardButton("📊 Stats", callback_data="admin_stats"),
+        types.InlineKeyboardButton("💳 Subs", callback_data="admin_subsusers"),
+        types.InlineKeyboardButton("❌ No Sub", callback_data="admin_nonsubs"),
         types.InlineKeyboardButton("📢 Broadcast", callback_data="admin_broadcast"),
         types.InlineKeyboardButton("➕ Add Admin", callback_data="admin_addadmin"),
+        types.InlineKeyboardButton("➖ Remove Admin", callback_data="admin_removeadmin"),
         types.InlineKeyboardButton("🚫 Ban User", callback_data="admin_ban"),
         types.InlineKeyboardButton("✅ Unban User", callback_data="admin_unban"),
+        types.InlineKeyboardButton("❌ Cancel Sub", callback_data="admin_cancelsub"),
         types.InlineKeyboardButton("🔑 Gen Key", callback_data="admin_genkey"),
         types.InlineKeyboardButton("🔐 View Keys", callback_data="admin_viewkeys"),
         types.InlineKeyboardButton("🔄 Refresh", callback_data="admin_refresh"),
         types.InlineKeyboardButton("❌ Close", callback_data="admin_close"),
     )
-    bot.reply_to(message,
+    subs_stats = admin_db.get_subscription_stats()
+    admin_list = admin_db.get_admins()
+    msg = (
         "⚙️ *Admin Panel*\n\n"
         f"👥 Total Users: {admin_db.get_user_count()}\n"
+        f"💳 Subscribed: {subs_stats['active']} (Expired: {subs_stats['expired']})\n"
+        f"    ├ Trial: {subs_stats['plans']['trial']}\n"
+        f"    ├ Standard: {subs_stats['plans']['standard']}\n"
+        f"    ├ Premium: {subs_stats['plans']['premium']}\n"
+        f"    └ VIP: {subs_stats['plans']['vip']}\n"
+        f"👑 Admins: {len(admin_list) + len(ADMIN_IDS)} (Super: {len(ADMIN_IDS)} + Custom: {len(admin_list)})\n"
         f"🚫 Banned: {admin_db.get_banned_count()}\n"
         f"💣 Total Bombs: {admin_db.get_total_bombs()}\n\n"
-        "Chooze karein:",
-        parse_mode="Markdown", reply_markup=markup)
+        "Chooze karein:"
+    )
+    bot.reply_to(message, msg, parse_mode="Markdown", reply_markup=markup)
 
 # ====== GENERATE KEY CALLBACKS ======
 @bot.callback_query_handler(func=lambda c: c.data and c.data.startswith("genkey_"))
@@ -1790,13 +1906,22 @@ def admin_callback(call):
         return
 
     if action == "refresh":
-        bot.edit_message_text(
+        subs_stats = admin_db.get_subscription_stats()
+        admin_list = admin_db.get_admins()
+        msg = (
             "⚙️ *Admin Panel*\n\n"
             f"👥 Total Users: {admin_db.get_user_count()}\n"
+            f"💳 Subscribed: {subs_stats['active']} (Expired: {subs_stats['expired']})\n"
+            f"    ├ Trial: {subs_stats['plans']['trial']}\n"
+            f"    ├ Standard: {subs_stats['plans']['standard']}\n"
+            f"    ├ Premium: {subs_stats['plans']['premium']}\n"
+            f"    └ VIP: {subs_stats['plans']['vip']}\n"
+            f"👑 Admins: {len(admin_list) + len(ADMIN_IDS)} (Super: {len(ADMIN_IDS)} + Custom: {len(admin_list)})\n"
             f"🚫 Banned: {admin_db.get_banned_count()}\n"
             f"💣 Total Bombs: {admin_db.get_total_bombs()}\n\n"
-            "✅ Refreshed!",
-            chat_id, msg_id, parse_mode="Markdown")
+            "✅ Refreshed!"
+        )
+        bot.edit_message_text(msg, chat_id, msg_id, parse_mode="Markdown")
         bot.answer_callback_query(call.id)
         return
 
@@ -1806,16 +1931,38 @@ def admin_callback(call):
         total_ok = sum(u.get("total_ok", 0) for u in users.values())
         total_fail = sum(u.get("total_fail", 0) for u in users.values())
         active_sessions = len(bomber.sessions)
+        subs_stats = admin_db.get_subscription_stats()
+        admin_list = admin_db.get_admins()
+        total_rounds = sum(u.get("total_rounds", 0) for u in users.values())
+        total_sessions = sum(u.get("total_sessions", 0) for u in users.values())
+        broadcasts = admin_db.data.get("broadcasts", 0)
+        keys_count = len(admin_db.data.get("keys", {}))
+        used_keys = sum(1 for k in admin_db.data.get("keys", {}).values() if k.get("used"))
 
         msg = (
             "📊 *Global Statistics*\n\n"
-            f"👥 Total Users: {len(users)}\n"
-            f"🚫 Banned: {admin_db.get_banned_count()}\n"
-            f"🎯 Active Sessions: {active_sessions}\n"
-            f"💣 Total Bombs: {admin_db.get_total_bombs()}\n"
-            f"✅ Global OK: {total_ok}\n"
-            f"❌ Global Fail: {total_fail}\n"
-            f"📊 Global Hits: {total_hits}\n"
+            f"👥 *Users:*\n"
+            f"    Total: {len(users)}\n"
+            f"    Banned: {admin_db.get_banned_count()}\n"
+            f"    Admins: {len(admin_list) + len(ADMIN_IDS)}\n\n"
+            f"💳 *Subscriptions:*\n"
+            f"    Active: {subs_stats['active']}\n"
+            f"    Expired: {subs_stats['expired']}\n"
+            f"    ├ Trial: {subs_stats['plans']['trial']}\n"
+            f"    ├ Standard: {subs_stats['plans']['standard']}\n"
+            f"    ├ Premium: {subs_stats['plans']['premium']}\n"
+            f"    └ VIP: {subs_stats['plans']['vip']}\n\n"
+            f"🔑 *Keys:*\n"
+            f"    Total: {keys_count} | Used: {used_keys} | Unused: {keys_count - used_keys}\n\n"
+            f"💣 *Bombing:*\n"
+            f"    Active Sessions: {active_sessions}\n"
+            f"    Total Bombs: {admin_db.get_total_bombs()}\n"
+            f"    Total Rounds: {total_rounds}\n"
+            f"    Total Sessions: {total_sessions}\n"
+            f"    ✅ OK: {total_ok}\n"
+            f"    ❌ Fail: {total_fail}\n"
+            f"    📊 Hits: {total_hits}\n\n"
+            f"📢 Broadcasts: {broadcasts}"
         )
         bot.edit_message_text(msg, chat_id, msg_id, parse_mode="Markdown")
         bot.answer_callback_query(call.id)
@@ -1828,7 +1975,10 @@ def admin_callback(call):
             bot.answer_callback_query(call.id)
             return
 
-        msg = f"👥 *All Users ({len(users)})*\n\n"
+        subs_stats = admin_db.get_subscription_stats()
+        msg = f"👥 *All Users — {len(users)} total*\n"
+        msg += f"💳 Subscribed: {subs_stats['active']} | Banned: {admin_db.get_banned_count()}\n"
+        msg += "─" * 25 + "\n\n"
         count = 0
         for uid, u in sorted(users.items(), key=lambda x: x[1].get("total_hits", 0), reverse=True):
             if count >= 10:
@@ -1837,16 +1987,113 @@ def admin_callback(call):
             name = u.get("username", "Unknown")
             phone = u.get("last_phone", "N/A")
             hits = u.get("total_hits", 0)
+            sessions = u.get("total_sessions", 0)
             mode = u.get("last_mode", "-")
             active = u.get("last_active", "")[:16].replace("T", " ")
             banned = "🚫" if admin_db.is_banned(int(uid)) else "✅"
-            msg += f"{banned} `{uid}` @{name}\n📱 {phone} | 💣 {hits} | 🎯 {mode}\n⏱ {active}\n\n"
+
+            # Check subscription
+            sub = admin_db.get_subscription(int(uid))
+            if sub:
+                plan = sub.get("plan", "unknown").upper()
+                badge = "👑 VIP" if plan == "VIP" else "⭐ PREM" if plan == "PREMIUM" else "⭐ STD" if plan == "STANDARD" else "🔰 TRIAL"
+            else:
+                badge = "❌ No Sub"
+
+            msg += f"{banned} {badge} `{uid}` @{name}\n📱 {phone} | 💣 {hits} | 📋 {sessions} | 🎯 {mode}\n⏱ {active}\n\n"
             count += 1
 
         if len(msg) > 4000:
             msg = msg[:3900] + "\n\n...aur bhi hai..."
 
         bot.edit_message_text(msg, chat_id, msg_id, parse_mode="Markdown")
+        bot.answer_callback_query(call.id)
+        return
+
+    if action == "subsusers":
+        subs = admin_db.get_subscribed_users()
+        if not subs:
+            bot.edit_message_text("❌ Koi subscribed user nahi hai.", chat_id, msg_id)
+            bot.answer_callback_query(call.id)
+            return
+
+        # Paginated: show page based on stored admin_data
+        page = admin_data.get(chat_id, {}).get("subs_page", 0)
+        per_page = 6
+        items = sorted(subs.items(), key=lambda x: x[1].get("sub", {}).get("started_at", ""), reverse=True)
+        total = len(items)
+        total_pages = (total + per_page - 1) // per_page
+        page = max(0, min(page, total_pages - 1))
+        start = page * per_page
+        end = start + per_page
+        page_items = items[start:end]
+
+        msg_text = f"💳 *Subscribed Users — Page {page+1}/{total_pages}*\n"
+        msg_text += "─" * 25 + "\n\n"
+        markup = types.InlineKeyboardMarkup(row_width=1)
+        for uid2, data in page_items:
+            u = data.get("user", {})
+            s = data.get("sub", {})
+            name = u.get("username", "Unknown")
+            phone = u.get("last_phone", "N/A")
+            plan = s.get("plan", "?").upper()
+            started = s.get("started_at", "")[:10]
+            expires = s.get("expires_at", "")[:10]
+            price = s.get("price", 0)
+            hits = u.get("total_hits", 0)
+            sessions = u.get("total_sessions", 0)
+            last_active = u.get("last_active", "")[:10]
+            badge = "👑 VIP" if plan == "VIP" else "⭐ PREM" if plan == "PREMIUM" else "⭐ STD" if plan == "STANDARD" else "🔰 TRIAL"
+            msg_text += f"{badge} `{uid2}` @{name}\n📱 {phone} | 💰 ₹{price} | 💣 {hits} | 📋 {sessions}\n📅 {started} ➝ {expires}\n⏱ Last: {last_active}\n\n"
+            markup.add(types.InlineKeyboardButton(f"❌ Cancel — {name} ({uid2})", callback_data=f"cancel_sub_{uid2}"))
+        nav_btns = []
+        if page > 0:
+            nav_btns.append(types.InlineKeyboardButton("⬅️ Prev", callback_data="subs_page_prev"))
+        if page < total_pages - 1:
+            nav_btns.append(types.InlineKeyboardButton("Next ➡️", callback_data="subs_page_next"))
+        if nav_btns:
+            markup.row(*nav_btns)
+        markup.add(types.InlineKeyboardButton("🔙 Back to Admin", callback_data="admin_refresh"))
+
+        bot.edit_message_text(msg_text, chat_id, msg_id, parse_mode="Markdown", reply_markup=markup)
+        bot.answer_callback_query(call.id)
+        return
+
+    if action == "nonsubs":
+        non = admin_db.get_non_subscribed_users()
+        if not non:
+            bot.edit_message_text("❌ Sab users ke paas subscription hai!", chat_id, msg_id)
+            bot.answer_callback_query(call.id)
+            return
+        msg = f"❌ *Non-Subscribed Users — {len(non)} total*\n"
+        msg += "─" * 25 + "\n\n"
+        count = 0
+        for uid, u in sorted(non.items(), key=lambda x: x[1].get("total_hits", 0), reverse=True):
+            if count >= 10:
+                msg += f"\n...aur {len(non) - 10} aur..."
+                break
+            name = u.get("username", "Unknown")
+            phone = u.get("last_phone", "N/A")
+            hits = u.get("total_hits", 0)
+            active = u.get("last_active", "")[:10]
+            banned = "🚫" if admin_db.is_banned(int(uid)) else "✅"
+            msg += f"{banned} `{uid}` @{name}\n📱 {phone} | 💣 {hits} | ⏱ {active}\n\n"
+            count += 1
+        bot.edit_message_text(msg, chat_id, msg_id, parse_mode="Markdown")
+        bot.answer_callback_query(call.id)
+        return
+
+    if action == "cancelsub":
+        admin_data[chat_id] = {"action": "cancelsub_waiting"}
+        bot.edit_message_text(
+            "❌ *Cancel Subscription*\n\n"
+            "Jis user ka subscription cancel karna hai uski **Telegram ID** bhejo.\n\n"
+            "Example: `123456789`\n\n"
+            "Active subscribed users:\n"
+            + "\n".join([f"  💳 `{uid}`" for uid in admin_db.get_subscribed_users().keys()][:10])
+            + ("\n  ...aur bhi..." if len(admin_db.get_subscribed_users()) > 10 else "")
+            + "\n\n/cancel se cancel karo.",
+            chat_id, msg_id, parse_mode="Markdown")
         bot.answer_callback_query(call.id)
         return
 
@@ -1868,6 +2115,18 @@ def admin_callback(call):
             "Jis user ko admin banana hai uski **Telegram ID** bhejo.\n\n"
             "Example: `7812058540`\n\n"
             "/cancel se cancel karo.",
+            chat_id, msg_id, parse_mode="Markdown")
+        bot.answer_callback_query(call.id)
+        return
+
+    if action == "removeadmin":
+        admin_data[chat_id] = {"action": "removeadmin_waiting"}
+        bot.edit_message_text(
+            "➖ *Remove Admin*\n\n"
+            "Jis user ko admin se hatana hai uski **Telegram ID** bhejo.\n\n"
+            "Custom admins ki list:\n"
+            + "\n".join([f"  👤 `{a}`" for a in admin_db.get_admins()]) +
+            "\n\n/cancel se cancel karo.",
             chat_id, msg_id, parse_mode="Markdown")
         bot.answer_callback_query(call.id)
         return
@@ -1895,12 +2154,133 @@ def admin_callback(call):
         return
 
 
+# ====== CANCEL SUBSCRIPTION CALLBACK ======
+@bot.callback_query_handler(func=lambda c: c.data and c.data.startswith("cancel_sub_"))
+def cancel_sub_callback(call):
+    chat_id = call.message.chat.id
+    msg_id = call.message.message_id
+    if chat_id not in ADMIN_IDS and not admin_db.is_admin(chat_id):
+        bot.answer_callback_query(call.id, "🚫 Access Denied!", show_alert=True)
+        return
+    uid = call.data.replace("cancel_sub_", "")
+    success, msg = admin_db.cancel_subscription(int(uid), chat_id)
+    bot.answer_callback_query(call.id, msg, show_alert=True)
+    # Refresh the subs list
+    bot.edit_message_text("🔄 Refreshing subscribed users...", chat_id, msg_id)
+    # Re-display subs list
+    subs = admin_db.get_subscribed_users()
+    page = admin_data.get(chat_id, {}).get("subs_page", 0)
+    per_page = 6
+    items = sorted(subs.items(), key=lambda x: x[1].get("sub", {}).get("started_at", ""), reverse=True)
+    total = len(items)
+    total_pages = max(1, (total + per_page - 1) // per_page)
+    page = max(0, min(page, total_pages - 1))
+    start = page * per_page
+    end = start + per_page
+    page_items = items[start:end]
+
+    if not subs:
+        bot.edit_message_text("❌ Ab koi subscribed user nahi hai.", chat_id, msg_id)
+        return
+    msg_text = f"💳 *Subscribed Users — Page {page+1}/{total_pages}*\n"
+    msg_text += "─" * 25 + "\n\n"
+    markup = types.InlineKeyboardMarkup(row_width=1)
+    for uid2, data in page_items:
+        u = data.get("user", {})
+        s = data.get("sub", {})
+        name = u.get("username", "Unknown")
+        phone = u.get("last_phone", "N/A")
+        plan = s.get("plan", "?").upper()
+        started = s.get("started_at", "")[:10]
+        expires = s.get("expires_at", "")[:10]
+        price = s.get("price", 0)
+        hits = u.get("total_hits", 0)
+        sessions = u.get("total_sessions", 0)
+        last_active = u.get("last_active", "")[:10]
+        badge = "👑 VIP" if plan == "VIP" else "⭐ PREM" if plan == "PREMIUM" else "⭐ STD" if plan == "STANDARD" else "🔰 TRIAL"
+        msg_text += f"{badge} `{uid2}` @{name}\n📱 {phone} | 💰 ₹{price} | 💣 {hits} | 📋 {sessions}\n📅 {started} ➝ {expires}\n⏱ Last: {last_active}\n\n"
+        markup.add(types.InlineKeyboardButton(f"❌ Cancel — {name} ({uid2})", callback_data=f"cancel_sub_{uid2}"))
+    nav_btns = []
+    if page > 0:
+        nav_btns.append(types.InlineKeyboardButton("⬅️ Prev", callback_data="subs_page_prev"))
+    if page < total_pages - 1:
+        nav_btns.append(types.InlineKeyboardButton("Next ➡️", callback_data="subs_page_next"))
+    if nav_btns:
+        markup.row(*nav_btns)
+    markup.add(types.InlineKeyboardButton("🔙 Back to Admin", callback_data="admin_refresh"))
+    try:
+        bot.edit_message_text(msg_text, chat_id, msg_id, parse_mode="Markdown", reply_markup=markup)
+    except:
+        bot.send_message(chat_id, msg_text, parse_mode="Markdown", reply_markup=markup)
+
+
+# ====== SUBS PAGE NAVIGATION CALLBACKS ======
+@bot.callback_query_handler(func=lambda c: c.data in ["subs_page_prev", "subs_page_next"])
+def subs_page_callback(call):
+    chat_id = call.message.chat.id
+    msg_id = call.message.message_id
+    if chat_id not in ADMIN_IDS and not admin_db.is_admin(chat_id):
+        bot.answer_callback_query(call.id, "🚫 Access Denied!", show_alert=True)
+        return
+    # Update page
+    admin_data.setdefault(chat_id, {})
+    current = admin_data[chat_id].get("subs_page", 0)
+    if call.data == "subs_page_prev":
+        admin_data[chat_id]["subs_page"] = max(0, current - 1)
+    else:
+        admin_data[chat_id]["subs_page"] = current + 1
+    bot.answer_callback_query(call.id)
+    # Re-trigger the subsusers display
+    # (simulate by calling the same logic inline)
+    subs = admin_db.get_subscribed_users()
+    page = admin_data[chat_id]["subs_page"]
+    per_page = 6
+    items = sorted(subs.items(), key=lambda x: x[1].get("sub", {}).get("started_at", ""), reverse=True)
+    total = len(items)
+    total_pages = max(1, (total + per_page - 1) // per_page)
+    page = max(0, min(page, total_pages - 1))
+    admin_data[chat_id]["subs_page"] = page
+    start = page * per_page
+    end = start + per_page
+    page_items = items[start:end]
+    msg_text = f"💳 *Subscribed Users — Page {page+1}/{total_pages}*\n"
+    msg_text += "─" * 25 + "\n\n"
+    markup = types.InlineKeyboardMarkup(row_width=1)
+    for uid2, data in page_items:
+        u = data.get("user", {})
+        s = data.get("sub", {})
+        name = u.get("username", "Unknown")
+        phone = u.get("last_phone", "N/A")
+        plan = s.get("plan", "?").upper()
+        started = s.get("started_at", "")[:10]
+        expires = s.get("expires_at", "")[:10]
+        price = s.get("price", 0)
+        hits = u.get("total_hits", 0)
+        sessions = u.get("total_sessions", 0)
+        last_active = u.get("last_active", "")[:10]
+        badge = "👑 VIP" if plan == "VIP" else "⭐ PREM" if plan == "PREMIUM" else "⭐ STD" if plan == "STANDARD" else "🔰 TRIAL"
+        msg_text += f"{badge} `{uid2}` @{name}\n📱 {phone} | 💰 ₹{price} | 💣 {hits} | 📋 {sessions}\n📅 {started} ➝ {expires}\n⏱ Last: {last_active}\n\n"
+        markup.add(types.InlineKeyboardButton(f"❌ Cancel — {name} ({uid2})", callback_data=f"cancel_sub_{uid2}"))
+    nav_btns = []
+    if page > 0:
+        nav_btns.append(types.InlineKeyboardButton("⬅️ Prev", callback_data="subs_page_prev"))
+    if page < total_pages - 1:
+        nav_btns.append(types.InlineKeyboardButton("Next ➡️", callback_data="subs_page_next"))
+    if nav_btns:
+        markup.row(*nav_btns)
+    markup.add(types.InlineKeyboardButton("🔙 Back to Admin", callback_data="admin_refresh"))
+    try:
+        bot.edit_message_text(msg_text, chat_id, msg_id, parse_mode="Markdown", reply_markup=markup)
+    except:
+        bot.send_message(chat_id, msg_text, parse_mode="Markdown", reply_markup=markup)
+
+
 # ====== ADMIN DATA STORAGE (for pending actions) ======
 admin_data = {}
 
 # ====== HANDLE ADMIN TEXT INPUTS ======
 @bot.message_handler(func=lambda m: admin_data.get(m.chat.id, {}).get("action") in [
-    "broadcast_waiting", "addadmin_waiting", "ban_waiting", "unban_waiting", "redeem_waiting"
+    "broadcast_waiting", "addadmin_waiting", "removeadmin_waiting", "cancelsub_waiting", "ban_waiting", "unban_waiting", "redeem_waiting"
 ])
 def handle_admin_input(message):
     chat_id = message.chat.id
@@ -1916,6 +2296,16 @@ def handle_admin_input(message):
         success, msg = admin_db.redeem_key(text.strip().upper(), chat_id)
         del admin_data[chat_id]
         bot.reply_to(message, msg, parse_mode="Markdown", reply_markup=main_keyboard(chat_id))
+        return
+
+    if action == "cancelsub_waiting":
+        try:
+            target_id = int(text)
+            success, msg = admin_db.cancel_subscription(target_id, chat_id)
+            bot.reply_to(message, msg, parse_mode="Markdown", reply_markup=main_keyboard(chat_id))
+        except:
+            bot.reply_to(message, "❌ Invalid ID! Sirf numeric ID bhejo.", reply_markup=main_keyboard(chat_id))
+        del admin_data[chat_id]
         return
 
     if action == "broadcast_waiting":
@@ -1950,6 +2340,21 @@ def handle_admin_input(message):
                 bot.reply_to(message, f"✅ User `{target_id}` ko Admin banaya gaya!", parse_mode="Markdown", reply_markup=main_keyboard(chat_id))
             else:
                 bot.reply_to(message, "❌ Pehle se hi admin hai!", reply_markup=main_keyboard(chat_id))
+        except:
+            bot.reply_to(message, "❌ Invalid ID! Sirf numeric ID bhejo.", reply_markup=main_keyboard(chat_id))
+        del admin_data[chat_id]
+
+    elif action == "removeadmin_waiting":
+        try:
+            target_id = int(text)
+            if target_id in ADMIN_IDS:
+                bot.reply_to(message, "❌ Super Admin ko nahi hataya ja sakta!", reply_markup=main_keyboard(chat_id))
+            elif target_id == chat_id:
+                bot.reply_to(message, "❌ Apne aap ko nahi hata sakte!", reply_markup=main_keyboard(chat_id))
+            elif admin_db.remove_admin(target_id, chat_id):
+                bot.reply_to(message, f"✅ User `{target_id}` ko Admin se hata diya gaya!", parse_mode="Markdown", reply_markup=main_keyboard(chat_id))
+            else:
+                bot.reply_to(message, "❌ Yeh user admin nahi hai ya already removed hai!", reply_markup=main_keyboard(chat_id))
         except:
             bot.reply_to(message, "❌ Invalid ID! Sirf numeric ID bhejo.", reply_markup=main_keyboard(chat_id))
         del admin_data[chat_id]
@@ -2018,3 +2423,6 @@ if __name__ == "__main__":
         print("\n🛑 Stopping all sessions...")
         stopped = bomber.stop_all()
         print(f"✅ Stopped {stopped} sessions. Bye!")
+    except Exception as e:
+        print(f"⚠️ Bot error: {e}")
+        # Don't exit on polling errors, let supervisord restart
