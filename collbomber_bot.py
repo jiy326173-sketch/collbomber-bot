@@ -35,7 +35,7 @@ if not API_TOKEN:
 if API_TOKEN and not os.path.exists("config_token.py"):
     try:
         with open("config_token.py", "w") as f:
-            f.write(f'TOKEN="""...{API_TOKEN}"\n')
+            f.write(f'TOKEN="{API_TOKEN}"\n')
         print("✅ Created config_token.py from BOT_TOKEN env")
     except:
         pass
