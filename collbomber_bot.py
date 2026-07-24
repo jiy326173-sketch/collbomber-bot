@@ -24,7 +24,11 @@ from collections import defaultdict
 import os
 API_TOKEN = os.environ.get("BOT_TOKEN", "")
 if not API_TOKEN:
-    from config_token import TOKEN as API_TOKEN
+    try:
+        from config_token import TOKEN as API_TOKEN
+    except ImportError:
+        API_TOKEN = ""
+        print("⚠️ No token found! Set BOT_TOKEN env variable or create config_token.py")
 
 MAX_WORKERS = 25  # Optimal — 25 concurrent threads
 SMS_MAX_WORKERS = 40  # SMS mode gets 40 workers
