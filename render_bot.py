@@ -3,6 +3,7 @@
 🔥 CollBomber Render Entry Point
 Combined Telegram Bot + Flask Health Server
 — No sleep, 24/7 uptime, auto-restart on failure
+— Bot thread starts at MODULE LEVEL (not in __main__) for gunicorn compat
 """
 import os
 import sys
@@ -65,6 +66,7 @@ def ping():
 
 # ============================================================
 # Bot Worker Thread — auto-restart on crash
+# Starts at MODULE LEVEL so gunicorn imports trigger it
 # ============================================================
 def run_bot():
     global bot_healthy, bot_start_time, bot_restart_count
@@ -81,16 +83,16 @@ def run_bot():
             print(f"🔄 Restarting in 5s...")
             time.sleep(5)
 
+# ========== START BOT THREAD IMMEDIATELY (module level) ==========
+# Gunicorn only imports the module — __main__ block never runs!
+# So we start the bot thread HERE so it runs when gunicorn imports render_bot:app
+bot_thread = threading.Thread(target=run_bot, daemon=True)
+bot_thread.start()
+
 # ============================================================
-# MAIN
+# MAIN — Only runs when executed directly (python3 render_bot.py)
 # ============================================================
 if __name__ == '__main__':
-    # Start bot in background
-    bot_thread = threading.Thread(target=run_bot, daemon=True)
-    bot_thread.start()
-    time.sleep(3)  # Let bot initialize
-
-    # Flask health server on Render's $PORT
     port = int(os.environ.get('PORT', 8080))
     print(f"🚀 Health server on port {port}")
     app.run(host='0.0.0.0', port=port, debug=False, threaded=True)
