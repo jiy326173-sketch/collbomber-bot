@@ -1394,7 +1394,7 @@ def btn_account(message):
     if status:
         msg += f"\n\n🔥 *Active Session:*\n📞 {status['phone']} | 🎯 {status['mode'].upper()}\n💣 Hits: {status['total']} | ⏱ {status['elapsed']}"
     
-    bot.reply_to(message, msg, parse_mode="Markdown", reply_markup=main_keyboard(chat_id))
+    bot.reply_to(message, msg, parse_mode=None, reply_markup=main_keyboard(chat_id))
 
 @bot.message_handler(func=lambda m: m.text == "📋 Plans")
 @join_channel_required
@@ -2262,6 +2262,12 @@ def cmd_redeem(message):
 # MAIN
 # ============================================================
 if __name__ == "__main__":
+    # Global exception handler — proper class with .handle() method
+    class SafeHandler:
+        def handle(self, exception):
+            print(f"⚠️ Handler error suppressed: {exception}")
+            return True
+    bot.exception_handler = SafeHandler()
     print(f"📊 Total APIs: {len(ALL_APIS)} (Call: {len(CALL_APIS)}, SMS: {len(SMS_APIS)}, WhatsApp: {len(WHATSAPP_APIS)})")
     print(f"⚡ Max Workers: {MAX_WORKERS} (SMS: {SMS_MAX_WORKERS} with Double-Fire + Auto-Retry)")
     print(f"⚡ SMS Delay: {SMS_DELAY_BETWEEN_ROUNDS}s — NON STOP!")
