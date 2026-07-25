@@ -1052,13 +1052,18 @@ class UltraBomber:
             return True, f"🔥 *{mode.upper()} started for* `{phone}`"
 
     def stop(self, chat_id):
+        thread_to_join = None
+        imp_thread_to_join = None
+        imp5s_to_join = None
         with self.lock:
             if chat_id not in self.sessions:
                 return False, "❌ Koi active session nahi hai."
             self.sessions[chat_id]["stop_event"].set()
+            thread_to_join = self.sessions[chat_id].get("thread")
+            imp_thread_to_join = self.sessions[chat_id].get("imp_thread")
+            imp5s_to_join = self.sessions[chat_id].get("imp5s_thread")
             elapsed = datetime.now() - self.sessions[chat_id]["stats"]["start_time"]
             s = self.sessions[chat_id]["stats"]
-            # Save stats to admin DB
             admin_db.update_stats(chat_id, s['ok'], s['fail'], s['rounds'], s['total'])
             total = s['total']
             ok = s['ok']
@@ -1067,14 +1072,18 @@ class UltraBomber:
             filled = int(bar_len * pct / 100)
             bar = "█" * filled + "░" * (bar_len - filled)
             del self.sessions[chat_id]
-            return True, (f"💥 *BOMBING COMPLETE* 💥\n"
-                         f"━━━━━━━━━━━━━━━━━━━━━\n"
-                         f"✅ Final Hits: {ok}/{total}\n"
-                         f"📊 Progress: [{bar}] {pct:.1f}%\n"
-                         f"⏱️ Duration: {str(elapsed).split('.')[0]}\n"
-                         f"🔄 Total Rounds: {s['rounds']}\n"
-                         f"━━━━━━━━━━━━━━━━━━━━━\n"
-                         f"🛑 Session terminated. /start for new session!")
+        # Wait for threads outside lock to prevent deadlock
+        for t in [thread_to_join, imp_thread_to_join, imp5s_to_join]:
+            if t and t.is_alive():
+                t.join(timeout=3)
+        return True, (f"💥 *BOMBING COMPLETE* 💥\n"
+                     f"━━━━━━━━━━━━━━━━━━━━━\n"
+                     f"✅ Final Hits: {ok}/{total}\n"
+                     f"📊 Progress: [{bar}] {pct:.1f}%\n"
+                     f"⏱️ Duration: {str(elapsed).split('.')[0]}\n"
+                     f"🔄 Total Rounds: {s['rounds']}\n"
+                     f"━━━━━━━━━━━━━━━━━━━━━\n"
+                     f"🛑 Session terminated. /start for new session!")
 
     def get_status(self, chat_id):
         with self.lock:
