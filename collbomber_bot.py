@@ -1563,6 +1563,7 @@ def btn_admin_panel(message):
         types.InlineKeyboardButton("📊 Stats", callback_data="admin_stats"),
         types.InlineKeyboardButton("💳 Subs", callback_data="admin_subsusers"),
         types.InlineKeyboardButton("❌ No Sub", callback_data="admin_nonsubs"),
+        types.InlineKeyboardButton("🔥 Live Status", callback_data="admin_livestatus"),
         types.InlineKeyboardButton("📢 Broadcast", callback_data="admin_broadcast"),
         types.InlineKeyboardButton("➕ Add Admin", callback_data="admin_addadmin"),
         types.InlineKeyboardButton("➖ Remove Admin", callback_data="admin_removeadmin"),
@@ -1643,12 +1644,11 @@ def goto_callback(call):
 def stop_bombing_callback(call):
     chat_id = call.message.chat.id
     msg_id = call.message.message_id
-    with bomber.lock:
-        if chat_id in bomber.sessions:
-            success, msg = bomber.stop(chat_id)
-            bot.edit_message_text(f"🛑 *Stopped!* ✅\n\n{msg}", chat_id, msg_id, parse_mode="Markdown")
-        else:
-            bot.answer_callback_query(call.id, "❌ No active session!", show_alert=True)
+    if chat_id in bomber.sessions:
+        success, msg = bomber.stop(chat_id)
+        bot.edit_message_text(f"🛑 *Stopped!* ✅\n\n{msg}", chat_id, msg_id, parse_mode="Markdown")
+    else:
+        bot.answer_callback_query(call.id, "❌ No active session!", show_alert=True)
     bot.answer_callback_query(call.id)
 
 
@@ -1755,7 +1755,7 @@ def admin_callback(call):
             status = "✅ Used" if k["used"] else "🆕 New"
             msg += f"`{key}` | {k['plan'].upper()} | ₹{k['price']} | {status}\n"
             count += 1
-        bot.edit_message_text(msg, chat_id, msg_id, parse_mode="Markdown")
+        bot.edit_message_text(msg, chat_id, msg_id, parse_mode=None)
         bot.answer_callback_query(call.id)
         return
 
@@ -1860,7 +1860,7 @@ def admin_callback(call):
         if len(msg) > 4000:
             msg = msg[:3900] + "\n\n...aur bhi hai..."
 
-        bot.edit_message_text(msg, chat_id, msg_id, parse_mode="Markdown")
+        bot.edit_message_text(msg, chat_id, msg_id, parse_mode=None)
         bot.answer_callback_query(call.id)
         return
 
@@ -1909,7 +1909,48 @@ def admin_callback(call):
             markup.row(*nav_btns)
         markup.add(types.InlineKeyboardButton("🔙 Back to Admin", callback_data="admin_refresh"))
 
-        bot.edit_message_text(msg_text, chat_id, msg_id, parse_mode="Markdown", reply_markup=markup)
+        bot.edit_message_text(msg_text, chat_id, msg_id, parse_mode=None, reply_markup=markup)
+        bot.answer_callback_query(call.id)
+        return
+
+    
+    if action == "livestatus":
+        with bomber.lock:
+            active = {k: v for k, v in bomber.sessions.items() if not v["stop_event"].is_set()}
+        if not active:
+            bot.edit_message_text("❌ Koi active bombing session nahi hai.", chat_id, msg_id)
+            bot.answer_callback_query(call.id)
+            return
+        msg = "🔥 *Live Bombing Status* 🔥\n"
+        msg += "═" * 25 + "\n\n"
+        now = datetime.now()
+        for uid, s in sorted(active.items(), key=lambda x: x[1]["stats"]["start_time"]):
+            elapsed = str(now - s["stats"]["start_time"]).split(".")[0]
+            ok = s["stats"]["ok"]
+            fail = s["stats"]["fail"]
+            total = s["stats"]["total"]
+            pct = (ok / max(total, 1)) * 100
+            bar_len = 12
+            filled = int(bar_len * pct / 100)
+            bar = "█" * filled + "░" * (bar_len - filled)
+            name = admin_db.data.get("users", {}).get(str(uid), {}).get("username", str(uid))
+            mode_icon = "📞" if s["mode"] == "call" else "💬" if s["mode"] == "sms" else "🔀"
+            phone_num = s.get("phone", "?")
+            mode_str = s.get("mode", "?").upper()
+            msg += (
+                f"{mode_icon} `{uid}` @{name}\n"
+                f"📱 {phone_num} | 🎯 {mode_str}\n"
+                f"⏱ {elapsed} | 💣 {total} hits\n"
+                f"📊 [{bar}] {pct:.0f}%\n"
+                f"✅ {ok} OK | ❌ {fail} Fail\n"
+                f"━━━━━━━━━━━━━━━\n\n"
+            )
+        if len(msg) > 4000:
+            msg = msg[:3900] + "\n\n...aur bhi..."
+        markup = types.InlineKeyboardMarkup()
+        markup.add(types.InlineKeyboardButton("🔄 Refresh", callback_data="admin_livestatus"))
+        markup.add(types.InlineKeyboardButton("🔙 Back", callback_data="admin_refresh"))
+        bot.edit_message_text(msg, chat_id, msg_id, parse_mode=None, reply_markup=markup)
         bot.answer_callback_query(call.id)
         return
 
@@ -1933,7 +1974,7 @@ def admin_callback(call):
             banned = "🚫" if admin_db.is_banned(int(uid)) else "✅"
             msg += f"{banned} `{uid}` @{name}\n📱 {phone} | 💣 {hits} | ⏱ {active}\n\n"
             count += 1
-        bot.edit_message_text(msg, chat_id, msg_id, parse_mode="Markdown")
+        bot.edit_message_text(msg, chat_id, msg_id, parse_mode=None)
         bot.answer_callback_query(call.id)
         return
 
