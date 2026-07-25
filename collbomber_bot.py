@@ -1506,7 +1506,7 @@ def btn_stop(message):
         return
     success, msg = bomber.stop(message.chat.id)
     # Clear cached phone so new mode asks for fresh number
-    uid = str(message.chat.id)
+    uid = message.chat.id
     if uid in user_data.users and "phone" in user_data.users[uid]:
         del user_data.users[uid]["phone"]
     bot.reply_to(message, msg, parse_mode="Markdown", reply_markup=main_keyboard(message.chat.id))
