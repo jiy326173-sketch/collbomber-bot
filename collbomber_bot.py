@@ -1558,9 +1558,9 @@ def subscription_required(func):
 def main_keyboard(user_id=None):
     markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
     buttons = [
-        types.KeyboardButton("🔥 MIX"),
-        types.KeyboardButton("💥 Bulk MIX"),
-        types.KeyboardButton("📞 CALL"),
+        types.KeyboardButton("🔴 MIX"),
+        types.KeyboardButton("🔴 Bulk MIX"),
+        types.KeyboardButton("🔴 CALL"),
         types.KeyboardButton("🛡 Protect"),
         types.KeyboardButton("🔓 Unprotect"),
         types.KeyboardButton("📊 Status"),
@@ -1568,7 +1568,7 @@ def main_keyboard(user_id=None):
         types.KeyboardButton("❓ Help"),
         types.KeyboardButton("📋 Plans"),
         types.KeyboardButton("🎁 Redeem"),
-        types.KeyboardButton("🛑 Stop"),
+        types.KeyboardButton("🛑 STOP"),
     ]
     if user_id and (user_id in ADMIN_IDS or admin_db.is_admin(user_id)):
         buttons.append(types.KeyboardButton("⚙️ Admin"))
@@ -1669,7 +1669,7 @@ def btn_status(message):
     else:
         bot.reply_to(message, "❌ Koi active session nahi hai. /start karein.", reply_markup=main_keyboard(message.chat.id))
 
-@bot.message_handler(func=lambda m: m.text == "🛑 Stop")
+@bot.message_handler(func=lambda m: m.text == "🛑 STOP")
 @join_channel_required
 def btn_stop(message):
     if admin_db.is_banned(message.chat.id):
@@ -1682,7 +1682,7 @@ def btn_stop(message):
         del user_data.users[uid]["phone"]
     bot.reply_to(message, msg, parse_mode="Markdown", reply_markup=main_keyboard(message.chat.id))
 
-@bot.message_handler(func=lambda m: m.text in ["🔥 MIX", "💥 Bulk MIX", "📞 CALL"])
+@bot.message_handler(func=lambda m: m.text in ["🔴 MIX", "🔴 Bulk MIX", "🔴 CALL"])
 @join_channel_required
 @subscription_required
 def btn_mode(message):
@@ -1691,9 +1691,9 @@ def btn_mode(message):
         bot.reply_to(message, "🚫 *Aapko ban kar diya gaya hai.*", parse_mode="Markdown")
         return
     mode_map = {
-        "🔥 MIX": "mix",
-        "💥 Bulk MIX": "bulk_mix",
-        "📞 CALL": "call",
+        "🔴 MIX": "mix",
+        "🔴 Bulk MIX": "bulk_mix",
+        "🔴 CALL": "call",
         "📞 Fake Calling": "call",
     }
     mode = mode_map[message.text]
@@ -1857,7 +1857,7 @@ class UserData:
 user_data = UserData()
 
 # Exclude from fallback: admin button, cancel, and admin input mode
-EXCLUDED_FROM_FALLBACK = ["⚙️ Admin", "/cancel", "🛡 Protect", "🔓 Unprotect", "👤 Account", "📋 Plans", "🎁 Redeem", "🛑 Stop"]
+EXCLUDED_FROM_FALLBACK = ["⚙️ Admin", "/cancel", "🛡 Protect", "🔓 Unprotect", "👤 Account", "📋 Plans", "🎁 Redeem", "🛑 STOP"]
 
 @bot.message_handler(func=lambda m: (m.text or "") not in EXCLUDED_FROM_FALLBACK and m.chat.id not in admin_data)
 @join_channel_required
