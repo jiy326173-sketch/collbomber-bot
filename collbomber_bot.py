@@ -1556,35 +1556,23 @@ def subscription_required(func):
 # KEYBOARDS
 # ============================================================
 def main_keyboard(user_id=None):
-    markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True, input_field_placeholder="Choose action...")
-    # Row 1: Attack Modes — 🔥 Red accent
-    btn1 = types.KeyboardButton("🔥 MIX")
-    btn2 = types.KeyboardButton("💥 Bulk MIX")
-    btn3 = types.KeyboardButton("📞 CALL")
-    # Row 2: Protection
-    btn4 = types.KeyboardButton("🛡 Protect")
-    btn5 = types.KeyboardButton("🔓 Unprotect")
-    btn6 = types.KeyboardButton("📊 Status")
-    # Row 3: Info
-    btn7 = types.KeyboardButton("👤 Account")
-    btn8 = types.KeyboardButton("❓ Help")
-    btn9 = types.KeyboardButton("📋 Plans")
-    btn10 = types.KeyboardButton("🎁 Redeem")
-    # Row 4: Danger — 🛑 Red stop
-    btn11 = types.KeyboardButton("🛑 Stop")
-    # Admin button
-    btn12 = types.KeyboardButton("⚙️ Admin") if user_id and (user_id in ADMIN_IDS or admin_db.is_admin(user_id)) else None
-    
-    if btn12:
-        markup.row(btn1, btn2, btn3)
-        markup.row(btn4, btn5, btn6)
-        markup.row(btn7, btn8, btn9, btn10)
-        markup.row(btn11, btn12)
-    else:
-        markup.row(btn1, btn2, btn3)
-        markup.row(btn4, btn5, btn6)
-        markup.row(btn7, btn8)
-        markup.row(btn9, btn10, btn11)
+    markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
+    buttons = [
+        types.KeyboardButton("🔥 MIX"),
+        types.KeyboardButton("💥 Bulk MIX"),
+        types.KeyboardButton("📞 CALL"),
+        types.KeyboardButton("🛡 Protect"),
+        types.KeyboardButton("🔓 Unprotect"),
+        types.KeyboardButton("📊 Status"),
+        types.KeyboardButton("👤 Account"),
+        types.KeyboardButton("❓ Help"),
+        types.KeyboardButton("📋 Plans"),
+        types.KeyboardButton("🎁 Redeem"),
+        types.KeyboardButton("🛑 Stop"),
+    ]
+    if user_id and (user_id in ADMIN_IDS or admin_db.is_admin(user_id)):
+        buttons.append(types.KeyboardButton("⚙️ Admin"))
+    markup.add(*buttons)
     return markup
 
 # ============================================================
@@ -1965,20 +1953,20 @@ def btn_admin_panel(message):
     markup.add(
         types.InlineKeyboardButton("👥 All Users", callback_data="admin_users"),
         types.InlineKeyboardButton("📊 Stats", callback_data="admin_stats"),
-        types.InlineKeyboardButton("💳 Subs", callback_data="admin_subsusers"),
+        types.InlineKeyboardButton("💳 Subs", callback_data="admin_subsusers", style="primary"),
         types.InlineKeyboardButton("❌ No Sub", callback_data="admin_nonsubs"),
-        types.InlineKeyboardButton("🔥 Live Status", callback_data="admin_livestatus"),
-        types.InlineKeyboardButton("📢 Broadcast", callback_data="admin_broadcast"),
+        types.InlineKeyboardButton("🔥 Live Status", callback_data="admin_livestatus", style="primary"),
+        types.InlineKeyboardButton("📢 Broadcast", callback_data="admin_broadcast", style="primary"),
         types.InlineKeyboardButton("➕ Add Admin", callback_data="admin_addadmin"),
-        types.InlineKeyboardButton("➖ Remove Admin", callback_data="admin_removeadmin"),
-        types.InlineKeyboardButton("🚫 Ban User", callback_data="admin_ban"),
+        types.InlineKeyboardButton("➖ Remove Admin", callback_data="admin_removeadmin", style="danger"),
+        types.InlineKeyboardButton("🚫 Ban User", callback_data="admin_ban", style="danger"),
         types.InlineKeyboardButton("✅ Unban User", callback_data="admin_unban"),
-        types.InlineKeyboardButton("❌ Cancel Sub", callback_data="admin_cancelsub"),
-        types.InlineKeyboardButton("🔑 Gen Key", callback_data="admin_genkey"),
+        types.InlineKeyboardButton("❌ Cancel Sub", callback_data="admin_cancelsub", style="danger"),
+        types.InlineKeyboardButton("🔑 Gen Key", callback_data="admin_genkey", style="primary"),
         types.InlineKeyboardButton("🔐 View Keys", callback_data="admin_viewkeys"),
-        types.InlineKeyboardButton("🔬 API Test", callback_data="admin_apitest"),
+        types.InlineKeyboardButton("🔬 API Test", callback_data="admin_apitest", style="primary"),
         types.InlineKeyboardButton("🔄 Refresh", callback_data="admin_refresh"),
-        types.InlineKeyboardButton("❌ Close", callback_data="admin_close"),
+        types.InlineKeyboardButton("❌ Close", callback_data="admin_close", style="danger"),
     )
     subs_stats = admin_db.get_subscription_stats()
     admin_list = admin_db.get_admins()
