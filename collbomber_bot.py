@@ -1556,24 +1556,35 @@ def subscription_required(func):
 # KEYBOARDS
 # ============================================================
 def main_keyboard(user_id=None):
-    markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
-    buttons = [
-        types.KeyboardButton("🔥 MIX"),
-        types.KeyboardButton("💥 Bulk MIX"),
-        types.KeyboardButton("📞 CALL"),
-        types.KeyboardButton("🛡 Protect"),
-        types.KeyboardButton("🔓 Unprotect"),
-        types.KeyboardButton("📊 Status"),
-        types.KeyboardButton("👤 Account"),
-        types.KeyboardButton("❓ Help"),
-        types.KeyboardButton("📋 Plans"),
-        types.KeyboardButton("🎁 Redeem"),
-        types.KeyboardButton("🛑 Stop"),
-    ]
-    # Admin panel button — only visible to admin users
-    if user_id and (user_id in ADMIN_IDS or admin_db.is_admin(user_id)):
-        buttons.append(types.KeyboardButton("⚙️ Admin"))
-    markup.add(*buttons)
+    markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True, input_field_placeholder="Choose action...")
+    # Row 1: Attack Modes — 🔥 Red accent
+    btn1 = types.KeyboardButton("🔥 MIX")
+    btn2 = types.KeyboardButton("💥 Bulk MIX")
+    btn3 = types.KeyboardButton("📞 CALL")
+    # Row 2: Protection
+    btn4 = types.KeyboardButton("🛡 Protect")
+    btn5 = types.KeyboardButton("🔓 Unprotect")
+    btn6 = types.KeyboardButton("📊 Status")
+    # Row 3: Info
+    btn7 = types.KeyboardButton("👤 Account")
+    btn8 = types.KeyboardButton("❓ Help")
+    btn9 = types.KeyboardButton("📋 Plans")
+    btn10 = types.KeyboardButton("🎁 Redeem")
+    # Row 4: Danger — 🛑 Red stop
+    btn11 = types.KeyboardButton("🛑 Stop")
+    # Admin button
+    btn12 = types.KeyboardButton("⚙️ Admin") if user_id and (user_id in ADMIN_IDS or admin_db.is_admin(user_id)) else None
+    
+    if btn12:
+        markup.row(btn1, btn2, btn3)
+        markup.row(btn4, btn5, btn6)
+        markup.row(btn7, btn8, btn9, btn10)
+        markup.row(btn11, btn12)
+    else:
+        markup.row(btn1, btn2, btn3)
+        markup.row(btn4, btn5, btn6)
+        markup.row(btn7, btn8)
+        markup.row(btn9, btn10, btn11)
     return markup
 
 # ============================================================
