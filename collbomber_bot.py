@@ -1700,19 +1700,13 @@ def btn_mode(message):
     mode = mode_map[message.text]
     username = message.from_user.username or message.from_user.first_name
 
-    # Check if phone is set
+    # ALWAYS ask for fresh number — ignore cached phone
+    if chat_id in user_data.users and "phone" in user_data.users[chat_id]:
+        del user_data.users[chat_id]["phone"]
+    
     user_data.users.setdefault(chat_id, {})
-    phone = user_data.users[chat_id].get("phone")
-
-    if not phone:
-        user_data.users[chat_id]["pending_mode"] = mode
-        bot.reply_to(message,
-            "📱 Pehle phone number bhejo (10-digit):\n\n"
-            "Jaise: `9876543210`",
-            parse_mode="Markdown")
-        return
-
-    # Bulk MIX: ask for 3 numbers
+    
+    # Bulk MIX: different flow — ask for 3 numbers
     if mode == "bulk_mix":
         user_data.users[chat_id]["pending_mode"] = "bulk_mix_confirm"
         bot.reply_to(message,
@@ -1721,9 +1715,14 @@ def btn_mode(message):
             "Jaise: `9876543210, 9876543211, 9876543212`",
             parse_mode="Markdown", reply_markup=main_keyboard(chat_id))
         return
-
-    success, msg = bomber.start(chat_id, phone, mode, username=username)
-    bot.reply_to(message, msg, parse_mode="Markdown", reply_markup=main_keyboard(chat_id))
+    
+    # Normal mode: ask for phone number
+    user_data.users[chat_id]["pending_mode"] = mode
+    bot.reply_to(message,
+        "📱 Pehle phone number bhejo (10-digit):\n\n"
+        "Jaise: `9876543210`",
+        parse_mode="Markdown")
+    return
 
 
 # ====== PLACEHOLDER HANDLERS FOR NEW BUTTONS ======
