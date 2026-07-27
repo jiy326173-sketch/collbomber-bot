@@ -1669,7 +1669,7 @@ def btn_status(message):
     else:
         bot.reply_to(message, "❌ Koi active session nahi hai. /start karein.", reply_markup=main_keyboard(message.chat.id))
 
-@bot.message_handler(func=lambda m: m.text == "🛑 STOP")
+@bot.message_handler(func=lambda m: m.text in ["🛑 STOP", "🛑 Stop"])
 @join_channel_required
 def btn_stop(message):
     if admin_db.is_banned(message.chat.id):
@@ -1682,7 +1682,7 @@ def btn_stop(message):
         del user_data.users[uid]["phone"]
     bot.reply_to(message, msg, parse_mode="Markdown", reply_markup=main_keyboard(message.chat.id))
 
-@bot.message_handler(func=lambda m: m.text in ["🔴 MIX", "🔴 Bulk MIX", "🔴 CALL"])
+@bot.message_handler(func=lambda m: m.text in ["🔴 MIX", "🔥 MIX", "🔴 Bulk MIX", "💥 Bulk MIX", "🔴 CALL", "📞 CALL", "📞 Fake Calling"])
 @join_channel_required
 @subscription_required
 def btn_mode(message):
@@ -1691,9 +1691,9 @@ def btn_mode(message):
         bot.reply_to(message, "🚫 *Aapko ban kar diya gaya hai.*", parse_mode="Markdown")
         return
     mode_map = {
-        "🔴 MIX": "mix",
-        "🔴 Bulk MIX": "bulk_mix",
-        "🔴 CALL": "call",
+        "🔴 MIX": "mix", "🔥 MIX": "mix",
+        "🔴 Bulk MIX": "bulk_mix", "💥 Bulk MIX": "bulk_mix",
+        "🔴 CALL": "call", "📞 CALL": "call",
         "📞 Fake Calling": "call",
     }
     mode = mode_map[message.text]
